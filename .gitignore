@@ -1,0 +1,36 @@
+# --- Java / Maven build output ---
+target/
+*.class
+*.jar
+*.war
+*.log
+hs_err_pid*
+dependency-reduced-pom.xml
+
+# --- IntelliJ IDEA ---
+.idea/
+*.iml
+*.iws
+out/
+
+# --- VS Code ---
+.vscode/
+
+# --- Eclipse ---
+.classpath
+.project
+.settings/
+
+# --- Environment files / local secrets ---
+.env
+.env.*
+!.env.example
+*.local.properties
+application-local.properties
+secrets.properties
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+*~
+*.swp
