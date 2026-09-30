@@ -48,4 +48,16 @@ public final class DbTestSupport {
             ps.executeUpdate();
         }
     }
+
+    /**
+     * Deleting the attempt cascades to its answers. Do this before deleting the quiz it
+     * references: quizzes.id is RESTRICT from quiz_attempts, so the attempt must go first.
+     */
+    public static void deleteAttemptById(Database db, long id) throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM quiz_attempts WHERE id = ?")) {
+            ps.setLong(1, id);
+            ps.executeUpdate();
+        }
+    }
 }
