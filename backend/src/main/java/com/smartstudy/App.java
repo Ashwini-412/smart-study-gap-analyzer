@@ -3,10 +3,21 @@ package com.smartstudy;
 import com.smartstudy.config.AppConfig;
 import com.smartstudy.controller.AuthController;
 import com.smartstudy.controller.HealthController;
+import com.smartstudy.controller.QuizController;
+import com.smartstudy.controller.TopicController;
 import com.smartstudy.repository.Database;
+import com.smartstudy.repository.JdbcQuestionRepository;
+import com.smartstudy.repository.JdbcQuizRepository;
 import com.smartstudy.repository.JdbcSessionRepository;
 import com.smartstudy.repository.JdbcStudentRepository;
+import com.smartstudy.repository.JdbcTopicRepository;
+import com.smartstudy.repository.QuestionRepository;
+import com.smartstudy.repository.QuizRepository;
+import com.smartstudy.repository.TopicRepository;
 import com.smartstudy.service.AuthService;
+import com.smartstudy.service.QuestionService;
+import com.smartstudy.service.QuizService;
+import com.smartstudy.service.TopicService;
 import com.smartstudy.util.PasswordHasher;
 import com.smartstudy.util.TokenGenerator;
 import com.sun.net.httpserver.HttpServer;
@@ -34,7 +45,15 @@ public class App {
                 Clock.systemUTC(),
                 Duration.ofHours(config.sessionHours()));
 
-        HttpServer server = createServer(config.serverHost(), config.serverPort(), authService);
+        TopicRepository topicRepository = new JdbcTopicRepository(database);
+        QuizRepository quizRepository = new JdbcQuizRepository(database);
+        QuestionRepository questionRepository = new JdbcQuestionRepository(database);
+        TopicService topicService = new TopicService(topicRepository);
+        QuizService quizService = new QuizService(quizRepository);
+        QuestionService questionService = new QuestionService(questionRepository, quizRepository, topicRepository);
+
+        HttpServer server = createServer(config.serverHost(), config.serverPort(), authService,
+                topicService, quizService, questionService);
         server.start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop(1)));
         System.out.println("Smart Study Gap Analyzer listening on http://" + config.serverHost() + ":"
@@ -53,6 +72,16 @@ public class App {
     public static HttpServer createServer(String host, int port, AuthService authService) throws IOException {
         HttpServer server = createServer(host, port);
         new AuthController(authService).mount(server);
+        return server;
+    }
+
+    /** Health, authentication, and quiz management (topics, quizzes, questions). */
+    public static HttpServer createServer(String host, int port, AuthService authService, TopicService topicService,
+                                           QuizService quizService, QuestionService questionService)
+            throws IOException {
+        HttpServer server = createServer(host, port, authService);
+        new TopicController(topicService, authService).mount(server);
+        new QuizController(quizService, questionService, authService).mount(server);
         return server;
     }
 }

@@ -31,4 +31,21 @@ public final class DbTestSupport {
             ps.executeUpdate();
         }
     }
+
+    public static void deleteTopicById(Database db, long id) throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM topics WHERE id = ?")) {
+            ps.setLong(1, id);
+            ps.executeUpdate();
+        }
+    }
+
+    /** Deleting the quiz cascades to its questions, which cascades to their options. */
+    public static void deleteQuizById(Database db, long id) throws SQLException {
+        try (Connection c = db.getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM quizzes WHERE id = ?")) {
+            ps.setLong(1, id);
+            ps.executeUpdate();
+        }
+    }
 }
