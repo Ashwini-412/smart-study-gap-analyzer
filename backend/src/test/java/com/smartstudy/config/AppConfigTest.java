@@ -59,6 +59,14 @@ class AppConfigTest {
     }
 
     @Test
+    void frontendDirHasADefaultAndCanBeOverriddenOrOmitted() throws IOException {
+        assertEquals("../frontend", loadDefaults(Map.of()).frontendDir());
+        assertEquals("/srv/web", loadDefaults(Map.of("FRONTEND_DIR", "/srv/web")).frontendDir());
+        String withoutFrontend = BASE + "gap.threshold.strong=75\ngap.threshold.moderate=50\n";
+        assertEquals("../frontend", loadText(withoutFrontend, Map.of()).frontendDir(), "optional property");
+    }
+
+    @Test
     void toStringNeverContainsThePassword() throws IOException {
         AppConfig c = loadDefaults(Map.of("DB_PASSWORD", "s3cret"));
         assertFalse(c.toString().contains("s3cret"));

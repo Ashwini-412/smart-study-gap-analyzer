@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard · Smart Study Gap Analyzer</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/dashboard.js"></script>
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+  <main class="container">
+    <section id="welcome" class="welcome" aria-live="polite"></section>
+    <section aria-labelledby="summary-title">
+      <h2 id="summary-title" class="visually-hidden">Summary</h2>
+      <div id="summary" class="summary-grid"></div>
+    </section>
+    <section class="card" aria-labelledby="gaps-title">
+      <div class="card-head">
+        <h2 id="gaps-title">Topic study gaps</h2>
+        <p class="muted" id="gaps-legend"></p>
+      </div>
+      <div id="gaps" aria-live="polite"></div>
+    </section>
+    <section class="card" aria-labelledby="recent-title">
+      <div class="card-head">
+        <h2 id="recent-title">Recent attempts</h2>
+        <a class="link" href="history.html">View all history</a>
+      </div>
+      <div id="recent" aria-live="polite"></div>
+    </section>
+  </main>
+</body>
+</html>

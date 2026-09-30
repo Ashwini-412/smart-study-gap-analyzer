@@ -5,6 +5,7 @@ import com.smartstudy.controller.AttemptController;
 import com.smartstudy.controller.AuthController;
 import com.smartstudy.controller.HealthController;
 import com.smartstudy.controller.PerformanceController;
+import com.smartstudy.controller.StaticFileController;
 import com.smartstudy.controller.QuizController;
 import com.smartstudy.controller.TopicController;
 import com.smartstudy.repository.Database;
@@ -30,6 +31,8 @@ import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.Executors;
@@ -65,10 +68,22 @@ public class App {
 
         HttpServer server = createServer(config.serverHost(), config.serverPort(), authService,
                 topicService, quizService, questionService, attemptService, performanceService);
+        mountFrontend(server, Path.of(config.frontendDir()));
         server.start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop(1)));
         System.out.println("Smart Study Gap Analyzer listening on http://" + config.serverHost() + ":"
                 + server.getAddress().getPort());
+    }
+
+    /** Serves the static frontend at "/" if the directory exists; the API works either way. */
+    public static void mountFrontend(HttpServer server, Path frontendDir) throws IOException {
+        if (!Files.isDirectory(frontendDir)) {
+            System.err.println("WARNING: frontend directory not found (" + frontendDir.toAbsolutePath()
+                    + "); only the API is served. Set FRONTEND_DIR to change it.");
+            return;
+        }
+        new StaticFileController(frontendDir).mount(server);
+        System.out.println("Serving frontend from " + frontendDir.toRealPath());
     }
 
     /** Health endpoint only (no database needed). Port 0 picks a free port, which tests use. */

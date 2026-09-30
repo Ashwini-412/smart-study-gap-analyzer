@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account · Smart Study Gap Analyzer</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/register.js"></script>
+</head>
+<body class="auth-page">
+  <main class="container narrow">
+    <h1 class="brand-title">Smart Study Gap Analyzer</h1>
+    <section class="card">
+      <h2>Create an account</h2>
+      <form id="register-form" novalidate>
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" autocomplete="name" required maxlength="100">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required maxlength="255">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" required maxlength="128"
+               aria-describedby="password-hint">
+        <p id="password-hint" class="hint">8–128 characters, with at least one letter and one digit.</p>
+        <label for="confirm">Confirm password</label>
+        <input id="confirm" name="confirm" type="password" autocomplete="new-password" required maxlength="128">
+        <div id="form-error"></div>
+        <button id="submit" type="submit" class="btn">Create account</button>
+      </form>
+      <p class="muted">Already have an account? <a href="login.html">Sign in</a></p>
+    </section>
+  </main>
+</body>
+</html>

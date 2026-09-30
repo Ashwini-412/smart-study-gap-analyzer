@@ -18,6 +18,7 @@ public final class AppConfig {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([A-Za-z0-9_]+)(?::([^}]*))?}");
 
     private static final int DEFAULT_SESSION_HOURS = 24;
+    private static final String DEFAULT_FRONTEND_DIR = "../frontend";
     private static final int MAX_SESSION_HOURS = 24 * 30;
 
     private final String serverHost;
@@ -30,6 +31,7 @@ public final class AppConfig {
     private final double strongThreshold;
     private final double moderateThreshold;
     private final int sessionHours;
+    private final String frontendDir;
 
     private AppConfig(Properties p, Function<String, String> env) {
         this.serverHost = resolve(p, "server.host", env);
@@ -44,6 +46,8 @@ public final class AppConfig {
         // Optional: absent means 24 hours.
         this.sessionHours = parseHours(p.containsKey("auth.session.hours")
                 ? resolve(p, "auth.session.hours", env) : String.valueOf(DEFAULT_SESSION_HOURS), "auth.session.hours");
+        // Optional: absent means ../frontend.
+        this.frontendDir = p.containsKey("frontend.dir") ? resolve(p, "frontend.dir", env) : DEFAULT_FRONTEND_DIR;
 
         if (moderateThreshold >= strongThreshold) {
             throw new IllegalStateException(
@@ -169,6 +173,11 @@ public final class AppConfig {
     /** How long a login session stays valid. */
     public int sessionHours() {
         return sessionHours;
+    }
+
+    /** Directory of the static frontend served at "/". */
+    public String frontendDir() {
+        return frontendDir;
     }
 
     /** JDBC URL without credentials. */

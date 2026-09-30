@@ -49,7 +49,7 @@ Design choices (kept minimal, per "do not over-engineer"):
 | Password hashing | PBKDF2WithHmacSHA256, per-user random salt (JDK built-in) | No plaintext; no extra dependency |
 | Auth | Random opaque token, stored **hashed** in `auth_sessions` | Student identity comes from the token, never from the request body |
 | Config | `application.properties` (non-secret) + env vars (DB creds) | No hardcoded credentials |
-| Static files | Same server serves `frontend/` | Same origin, so no CORS handling |
+| Static files | Same server serves `frontend/` at `/` (`StaticFileController`, Milestone 13) | Same origin, so no CORS handling |
 | Tests | JUnit 5 (service logic unit tests; repository tests against a test DB) | |
 
 Security rules baked into the design:
@@ -57,6 +57,26 @@ Security rules baked into the design:
   is computed on the server from `question_options.is_correct`.
 - The question-listing DTO never contains `is_correct`.
 - The `studentId` is never accepted from the client; it is resolved from the token.
+
+### Static frontend serving (implemented in Milestone 13)
+
+The API contexts (`/api/...`) and the frontend share one `HttpServer`. `StaticFileController`
+is mounted on the root context `/`, which the JDK server only uses when no `/api/...` context
+matches, so no API route changed.
+
+- **Location:** `frontend.dir` in `application.properties`, overridable with env `FRONTEND_DIR`,
+  default `../frontend` (relative to the working directory, i.e. `backend/`). If the directory
+  is missing, startup logs a warning and serves the API only.
+- **Restrictions:**
+  - GET/HEAD only; anything else gets 405.
+  - Only regular files of an allow-listed type (`.html`, `.css`, `.js`, `.svg`, `.png`, `.ico`)
+    inside the root. Everything else gets a plain 404:
+    - `.`/`..` segments and hidden files;
+    - paths that normalise, or resolve through a symlink, outside the root;
+    - directories. `/` and `.../` map to `index.html`, and there are no listings.
+  - An unmatched `/api/...` path still gets the API's JSON 404, not a static-file response.
+- **Headers:** a strict same-origin `Content-Security-Policy` that allows no inline script,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-cache`.
 
 ## 3. Backend package structure
 
@@ -94,29 +114,49 @@ Controllers never touch JDBC; repositories never contain business rules.
 
 ## 4. Frontend structure
 
-Vanilla HTML/CSS/JS, no build step, served from `frontend/`.
+Vanilla HTML/CSS/JS (ES modules), no build step and no dependencies. Served by the Java
+server from `frontend/` (section 2). Implemented in Milestone 13.
 
 ```
 frontend/
-├── index.html          landing / redirect
-├── register.html
-├── login.html
+├── index.html          redirect: dashboard if a token is present, else login
+├── login.html          sign in; shows registered / logged-out / session-expired notices
+├── register.html       create account; client-side confirm-password check, backend field errors
+├── dashboard.html      summary, topic gap table, recent attempts
 ├── quizzes.html        quiz list
-├── quiz.html           take a quiz (questions + submit)
-├── result.html         score + per-question outcome after submit
-├── history.html        attempt history
-├── dashboard.html      topic-wise performance + learning gaps
+├── quiz.html           take a quiz (?id=): questions + submit
+├── result.html         one attempt's stored result (?id=)
+├── history.html        all of the student's attempts, newest first
 ├── css/
-│   └── styles.css
+│   └── styles.css      responsive layout, light/dark
 └── js/
-    ├── api.js          fetch wrapper: base URL, token header, error handling
-    ├── auth.js         store/clear token, redirect to login if missing
-    └── <page>.js       one script per page
+    ├── api.js          the only module that calls fetch: token, JSON, errors, 401 handling
+    ├── auth.js         requireAuth() guard (GET /api/auth/me), shared header/nav, logout
+    ├── ui.js           DOM helpers (createElement/textContent), loading/empty/error states
+    ├── attempts.js     attempt table shared by dashboard and history
+    └── <page>.js       one module per page
 ```
 
-The token is kept in `sessionStorage`/`localStorage`. Because the DOM is
-built from server data, the frontend must use `textContent` (not `innerHTML`)
-for any user- or DB-supplied strings.
+API and auth structure:
+- **Single API client.** `api.js` sends every request as JSON with `Authorization: Bearer <token>`.
+  It turns the backend error format (`{error, fields?}`) into one `ApiError` type; an
+  unreachable server becomes status 0. Pages render loading, empty and error states (with
+  retry) from that.
+- **Token handling.** The login token is kept in `sessionStorage` only, and passwords are never
+  stored. A 401 on a protected call clears the token and redirects to
+  `login.html?expired=1`. Logout calls `POST /api/auth/logout`, which revokes the session
+  server-side, then clears the token.
+- **Identity.** Protected pages call `requireAuth()` first. Identity comes from
+  `GET /api/auth/me`, and no student id is ever sent or stored.
+- **No client-side grading.** The quiz page sends only `{questionId, selectedOptionId}` pairs.
+  Scores, counts, per-question correctness and gap classifications are shown exactly as the
+  backend returns them, and the correct option is never shown.
+- **Dashboard composition.** There is no `/api/dashboard` yet (section 8). The dashboard is
+  assembled from `GET /api/auth/me`, `/api/attempts`, `/api/performance/gaps` and
+  `/api/quizzes`. History and result pages also use `/api/quizzes` (or `/api/quizzes/{id}`)
+  for quiz titles.
+- **XSS.** All server-supplied strings are inserted with `textContent`, never `innerHTML`, and
+  the CSP from section 2 blocks inline script.
 
 ## 5. Database entities
 
@@ -201,7 +241,7 @@ All paths under `/api`, JSON bodies. "Auth" = requires bearer token.
 | GET | `/api/attempts/{id}` | yes | One of the caller's own attempts → 200 `{id, quizId, submittedAt, totalQuestions, answeredCount, correctCount, scorePercent, answers: [{questionId, selectedOptionId, correct}]}`, read from the evaluation stored at submission (no correct option ids). Another student's attempt → 404, same as unknown (implemented in Milestone 10) |
 | GET | `/api/performance/topics` | yes | Topic-wise accuracy |
 | GET | `/api/performance/gaps` | yes | Every topic with the caller's cumulative accuracy and classification → 200 `[{topicId, topicName, totalQuestions, correctCount, accuracyPercent, classification}]`, ordered by topic name. `totalQuestions` counts each of the topic's questions in every attempt, unanswered included; `accuracyPercent` is null and `classification` is `No Data` when that is 0. Thresholds from `gap.threshold.*` (section 7); one query over stored `is_correct` values (implemented in Milestone 12) |
-| GET | `/api/dashboard` | yes | Aggregate: overall score, recent attempts, topics, gaps |
+| GET | `/api/dashboard` | yes | **Planned, not implemented.** Aggregate: overall score, recent attempts, topics, gaps. The Milestone 13 dashboard page composes existing endpoints instead (section 4) |
 | GET | `/api/health` | no | Liveness check |
 
 Error format: `{ "error": "message" }` with 400 / 401 / 403 / 404 / 500.

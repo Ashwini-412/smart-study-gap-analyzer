@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Smart Study Gap Analyzer</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/login.js"></script>
+</head>
+<body class="auth-page">
+  <main class="container narrow">
+    <h1 class="brand-title">Smart Study Gap Analyzer</h1>
+    <section class="card">
+      <h2>Sign in</h2>
+      <div id="notice"></div>
+      <form id="login-form" novalidate>
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required maxlength="255">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="128">
+        <div id="form-error"></div>
+        <button id="submit" type="submit" class="btn">Sign in</button>
+      </form>
+      <p class="muted">New here? <a href="register.html">Create an account</a></p>
+    </section>
+  </main>
+</body>
+</html>
