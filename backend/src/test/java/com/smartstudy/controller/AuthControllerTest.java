@@ -183,6 +183,11 @@ class AuthControllerTest {
         Res num = call("POST", "/api/auth/register",
                 "{\"name\":\"N\",\"email\":\"" + uniqueEmail() + "\",\"password\":12345678}");
         assertEquals(400, num.status());
+        // Non-string scalars are not coerced into string fields.
+        assertEquals(400, call("POST", "/api/auth/register",
+                "{\"name\":123,\"email\":\"" + uniqueEmail() + "\",\"password\":\"" + PASSWORD + "\"}").status());
+        assertEquals(400, call("POST", "/api/auth/register",
+                "{\"name\":\"N\",\"email\":true,\"password\":\"" + PASSWORD + "\"}").status());
         // Oversized body
         assertEquals(400, call("POST", "/api/auth/register", "{\"name\":\"" + "x".repeat(20_000) + "\"}").status());
     }

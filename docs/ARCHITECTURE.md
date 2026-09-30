@@ -50,7 +50,7 @@ Design choices (kept minimal, per "do not over-engineer"):
 | Auth | Random opaque token, stored **hashed** in `auth_sessions` | Student identity comes from the token, never from the request body |
 | Config | `application.properties` (non-secret) + env vars (DB creds) | No hardcoded credentials |
 | Static files | Same server serves `frontend/` at `/` (`StaticFileController`, Milestone 13) | Same origin, so no CORS handling |
-| Tests | JUnit 5 (service logic unit tests; repository tests against a test DB) | |
+| Tests | JUnit 5 (service/controller tests over in-memory repositories; JDBC repository tests against the configured MySQL database, skipped unless `DB_PASSWORD` is set, cleaning up the rows they create) | |
 
 Security rules baked into the design:
 - The submit endpoint accepts only `{questionId, selectedOptionId}`. Correctness
@@ -92,14 +92,15 @@ backend/
     │   ├── java/com/smartstudy/
     │   │   ├── App.java                 entry point: load config, build/start HttpServer
     │   │   ├── config/                  AppConfig (properties + env, threshold validation)
-    │   │   ├── controller/              HealthController, AuthController, AuthFilter, Endpoint;
-    │   │   │                            later QuizController, AttemptController, PerformanceController
-    │   │   ├── service/                 AuthService; later QuizService, AttemptService,
-    │   │   │                            GapAnalysisService, DashboardService
-    │   │   ├── repository/              Database, StudentRepository + SessionRepository (interfaces),
-    │   │   │                            JdbcStudentRepository, JdbcSessionRepository, DataAccessException;
-    │   │   │                            later QuizRepository, ...
-    │   │   ├── model/                   Student, AuthSession; later Topic, Quiz, Question, ...
+    │   │   ├── controller/              HealthController, AuthController, AuthFilter, Endpoint, TopicController,
+    │   │   │                            QuizController, QuizIdRouter, AttemptController, PerformanceController,
+    │   │   │                            StaticFileController
+    │   │   ├── service/                 AuthService, TopicService, QuizService, QuestionService, AttemptService,
+    │   │   │                            PerformanceService (gap analysis); no DashboardService (section 8)
+    │   │   ├── repository/              Database, DataAccessException, one interface + Jdbc* implementation each
+    │   │   │                            for students, sessions, topics, quizzes, questions, attempts, performance
+    │   │   ├── model/                   Student, AuthSession, Topic, Quiz, Question, QuestionOption,
+    │   │   │                            QuizAttempt, AttemptAnswer
     │   │   ├── dto/                     Request/response records (RegisterRequest, LoginRequest,
     │   │   │                            LoginResponse, StudentResponse, AuthenticatedUser, ErrorResponse, ...)
     │   │   └── util/                    HttpUtil, PasswordHasher, TokenGenerator, ErrorLog and the
@@ -234,17 +235,26 @@ All paths under `/api`, JSON bodies. "Auth" = requires bearer token.
 | POST | `/api/auth/register` | no | Register student (name, email, password) |
 | POST | `/api/auth/login` | no | Returns token |
 | POST | `/api/auth/logout` | yes | Invalidate token |
+| GET | `/api/auth/me` | yes | Current student (section below) |
+| GET | `/api/topics` | yes | List topics, ordered by name |
+| POST | `/api/topics` | yes | Body `{name}` → 201; 409 on duplicate name (case-insensitive) |
 | GET | `/api/quizzes` | yes | List quizzes |
+| POST | `/api/quizzes` | yes | Body `{title, description?}` → 201; 409 on duplicate title |
+| GET | `/api/quizzes/{id}` | yes | One quiz with its topics; 404 if unknown or non-numeric |
+| POST | `/api/quizzes/{id}/questions` | yes | Body `{topicId, questionText, options: [{text, correct}]}` (2–6 options, exactly one correct) → 201; 404 unknown quiz, 400 unknown topic |
 | GET | `/api/quizzes/{id}/questions` | yes | Questions + options, **no correctness data** |
 | POST | `/api/quizzes/{id}/attempts` | yes | Body: `{"answers": [{questionId, selectedOptionId}]}` → 201 `{id, quizId, submittedAt, totalQuestions, answeredCount}`. Evaluated and stored server-side; no score or correctness in the response (implemented in Milestone 9) |
 | GET | `/api/attempts` | yes | Current student's attempt history → 200 `[{id, quizId, submittedAt, totalQuestions, answeredCount, correctCount, scorePercent}]`, newest first (`submitted_at DESC, id DESC`), `[]` when none. Values are the snapshot stored at submission; one query (implemented in Milestone 11) |
 | GET | `/api/attempts/{id}` | yes | One of the caller's own attempts → 200 `{id, quizId, submittedAt, totalQuestions, answeredCount, correctCount, scorePercent, answers: [{questionId, selectedOptionId, correct}]}`, read from the evaluation stored at submission (no correct option ids). Another student's attempt → 404, same as unknown (implemented in Milestone 10) |
-| GET | `/api/performance/topics` | yes | Topic-wise accuracy |
+| GET | `/api/performance/topics` | yes | **Planned, not implemented** (404). Topic-wise accuracy is returned by `/api/performance/gaps` |
 | GET | `/api/performance/gaps` | yes | Every topic with the caller's cumulative accuracy and classification → 200 `[{topicId, topicName, totalQuestions, correctCount, accuracyPercent, classification}]`, ordered by topic name. `totalQuestions` counts each of the topic's questions in every attempt, unanswered included; `accuracyPercent` is null and `classification` is `No Data` when that is 0. Thresholds from `gap.threshold.*` (section 7); one query over stored `is_correct` values (implemented in Milestone 12) |
 | GET | `/api/dashboard` | yes | **Planned, not implemented.** Aggregate: overall score, recent attempts, topics, gaps. The Milestone 13 dashboard page composes existing endpoints instead (section 4) |
 | GET | `/api/health` | no | Liveness check |
 
-Error format: `{ "error": "message" }` with 400 / 401 / 403 / 404 / 500.
+Error format: `{ "error": "message" }` with 400 / 401 / 404 / 405 / 409 / 500. No endpoint returns 403:
+another student's attempt is a 404, indistinguishable from an unknown one.
+Request bodies must match the DTO exactly: unknown properties and wrong JSON types (for example a
+number where a string is expected, `"5"` or `1.5` for an id) are 400, never coerced.
 Validation failures (400) add `"fields": { "<field>": "<message>" }`; messages never echo the input.
 Ownership checks (attempt belongs to the caller) live in the service layer.
 

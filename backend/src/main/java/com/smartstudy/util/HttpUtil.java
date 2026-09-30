@@ -1,7 +1,13 @@
 package com.smartstudy.util;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.type.LogicalType;
 import com.smartstudy.dto.ErrorResponse;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -12,8 +18,25 @@ import java.nio.charset.StandardCharsets;
 /** JSON request/response helpers shared by controllers. */
 public final class HttpUtil {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = strictMapper();
     private static final int MAX_BODY_BYTES = 16 * 1024;
+
+    /**
+     * JSON types must match the DTO exactly: Jackson's default scalar coercions would accept
+     * {"name": 123} as "123", {"questionId": "5"} or {"questionId": 1.5} as 5 / 1, and
+     * {"correct": 1} as true. Each of those is rejected here instead (400).
+     */
+    private static ObjectMapper strictMapper() {
+        ObjectMapper mapper = JsonMapper.builder()
+                .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
+                .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .build();
+        mapper.coercionConfigFor(LogicalType.Textual)
+                .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail);
+        return mapper;
+    }
 
     private HttpUtil() {
     }

@@ -446,6 +446,21 @@ class QuizManagementControllerTest {
                 "{\"topicId\":\"abc\",\"questionText\":\"T\",\"options\":[]}").status());
         assertEquals(400, auth("POST", path,
                 "{\"topicId\":" + topicId + ",\"questionText\":\"T\",\"options\":[\"a\",\"b\"]}").status());
+        // Scalars of the wrong type are rejected, not coerced (123 -> "123", "5" -> 5, 1.5 -> 1, 1 -> true).
+        assertEquals(400, auth("POST", "/api/topics", "{\"name\":42}").status());
+        assertEquals(400, auth("POST", "/api/quizzes", "{\"title\":true}").status());
+        assertEquals(400, auth("POST", path,
+                "{\"topicId\":\"" + topicId + "\",\"questionText\":\"T\",\"options\":"
+                        + "[{\"text\":\"a\",\"correct\":true},{\"text\":\"b\",\"correct\":false}]}").status());
+        assertEquals(400, auth("POST", path,
+                "{\"topicId\":" + topicId + ",\"questionText\":7,\"options\":"
+                        + "[{\"text\":\"a\",\"correct\":true},{\"text\":\"b\",\"correct\":false}]}").status());
+        assertEquals(400, auth("POST", path,
+                "{\"topicId\":" + topicId + ",\"questionText\":\"T\",\"options\":"
+                        + "[{\"text\":\"a\",\"correct\":1},{\"text\":\"b\",\"correct\":0}]}").status());
+        assertEquals(0, auth("GET", path, null).json().size(), "nothing persisted");
+        assertEquals(0, auth("GET", "/api/topics", null).json().findValues("name").stream()
+                .filter(n -> n.asText().equals("42")).count(), "no topic named \"42\"");
     }
 
     @Test

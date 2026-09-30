@@ -304,7 +304,10 @@ class AttemptSubmissionControllerTest {
     @Test
     void malformedJsonIs400() throws Exception {
         for (String body : List.of("{not json", "", "null", "[]", "{\"answers\":\"x\"}",
-                "{\"answers\":[{\"questionId\":\"abc\"}]}")) {
+                "{\"answers\":[{\"questionId\":\"abc\"}]}",
+                // numeric strings and fractions are not coerced into ids
+                "{\"answers\":[{\"questionId\":\"" + questionAId + "\",\"selectedOptionId\":" + correctA + "}]}",
+                "{\"answers\":[{\"questionId\":" + questionAId + ".5,\"selectedOptionId\":" + correctA + "}]}")) {
             assertEquals(400, submit(body).status(), "body=" + body);
         }
     }

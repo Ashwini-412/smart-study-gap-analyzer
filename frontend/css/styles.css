@@ -105,7 +105,8 @@ a { color: var(--primary); }
 .stat-detail { color: var(--muted); font-size: 0.8rem; margin: 0; }
 
 /* ---- tables ---- */
-.table-wrap { overflow-x: auto; }
+/* relative: keeps absolutely positioned (visually-hidden) cells inside the scroll box on small screens */
+.table-wrap { position: relative; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 thead th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
