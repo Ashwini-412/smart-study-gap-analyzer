@@ -100,6 +100,12 @@ public class QuestionService {
         int correctCount = 0;
         for (int i = 0; i < options.size(); i++) {
             CreateQuestionRequest.OptionInput option = options.get(i);
+            if (option == null) {
+                // JSON "options": [null, ...] - malformed input, not a server error.
+                errors.put("options[" + i + "]", "Option is required");
+                anyOptionTextError = true;
+                continue;
+            }
             String text = option.text() == null ? null : option.text().trim();
             if (text == null || text.isEmpty()) {
                 errors.put("options[" + i + "].text", "Option text is required");

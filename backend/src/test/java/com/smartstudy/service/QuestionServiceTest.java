@@ -153,6 +153,15 @@ class QuestionServiceTest {
     }
 
     @Test
+    void nullOptionElementIsRejectedAsValidationNotACrash() {
+        List<OptionInput> withNull = java.util.Arrays.asList(null, new OptionInput("b", true));
+        var e = assertThrows(ValidationException.class,
+                () -> service.create(quizId, new CreateQuestionRequest(topicId, "Text", withNull)));
+        assertTrue(e.fieldErrors().containsKey("options[0]"));
+        assertEquals(0, questions.questionCount());
+    }
+
+    @Test
     void noCorrectOptionIsRejected() {
         var e = assertThrows(ValidationException.class, () -> service.create(quizId,
                 new CreateQuestionRequest(topicId, "Text", List.of(new OptionInput("a", false), new OptionInput("b", false)))));

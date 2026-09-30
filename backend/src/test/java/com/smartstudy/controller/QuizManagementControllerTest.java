@@ -420,4 +420,119 @@ class QuizManagementControllerTest {
         assertNoAuthSecrets(auth("POST", "/api/quizzes/" + quizId + "/questions",
                 questionBody(topicId, "Text", "a", true, "b", false)).body());
     }
+
+    // ---- M8: malformed input must be a 400, never a 500 ----
+
+    @Test
+    void malformedJsonBodiesAreRejectedWith400OnEveryCreateEndpoint() throws Exception {
+        long quizId = createQuiz();
+        for (String path : List.of("/api/topics", "/api/quizzes", "/api/quizzes/" + quizId + "/questions")) {
+            for (String body : List.of("{not json", "", "null", "[]")) {
+                assertEquals(400, auth("POST", path, body).status(), path + " body=" + body);
+            }
+        }
+    }
+
+    @Test
+    void wrongJsonTypesAreRejectedWith400() throws Exception {
+        long quizId = createQuiz();
+        long topicId = createTopic();
+        String path = "/api/quizzes/" + quizId + "/questions";
+        assertEquals(400, auth("POST", path,
+                "{\"topicId\":" + topicId + ",\"questionText\":\"T\",\"options\":\"not-an-array\"}").status());
+        assertEquals(400, auth("POST", path,
+                "{\"topicId\":\"abc\",\"questionText\":\"T\",\"options\":[]}").status());
+        assertEquals(400, auth("POST", path,
+                "{\"topicId\":" + topicId + ",\"questionText\":\"T\",\"options\":[\"a\",\"b\"]}").status());
+    }
+
+    @Test
+    void nullOptionElementIsRejectedWith400() throws Exception {
+        long quizId = createQuiz();
+        long topicId = createTopic();
+        Res r = auth("POST", "/api/quizzes/" + quizId + "/questions",
+                "{\"topicId\":" + topicId + ",\"questionText\":\"T\",\"options\":[null,{\"text\":\"b\",\"correct\":true}]}");
+        assertEquals(400, r.status());
+        assertTrue(r.json().get("fields").has("options[0]"));
+        assertEquals(0, auth("GET", "/api/quizzes/" + quizId + "/questions", null).json().size(),
+                "nothing persisted");
+    }
+
+    // ---- M8: clients cannot supply server-owned fields ----
+
+    @Test
+    void clientSuppliedStudentIdIsRejectedNotSilentlyUsed() throws Exception {
+        Res r = auth("POST", "/api/topics",
+                JSON.createObjectNode().put("name", "Topic-" + UUID.randomUUID()).put("studentId", 1).toString());
+        assertEquals(400, r.status());
+    }
+
+    @Test
+    void clientSuppliedPositionOrIdIsRejectedNotSilentlyUsed() throws Exception {
+        long quizId = createQuiz();
+        long topicId = createTopic();
+        String path = "/api/quizzes/" + quizId + "/questions";
+        assertEquals(400, auth("POST", path, "{\"topicId\":" + topicId + ",\"questionText\":\"T\",\"position\":99,"
+                + "\"options\":[{\"text\":\"a\",\"correct\":true},{\"text\":\"b\",\"correct\":false}]}").status());
+        assertEquals(400, auth("POST", "/api/quizzes",
+                "{\"id\":42,\"title\":\"Quiz-" + UUID.randomUUID() + "\"}").status());
+    }
+
+    // ---- M8: option-count boundaries at the HTTP level ----
+
+    @Test
+    void sixOptionsAreAcceptedAndSevenRejected() throws Exception {
+        long quizId = createQuiz();
+        long topicId = createTopic();
+        String path = "/api/quizzes/" + quizId + "/questions";
+        assertEquals(201, auth("POST", path, questionBody(topicId, "Six",
+                "a", true, "b", false, "c", false, "d", false, "e", false, "f", false)).status());
+        assertEquals(400, auth("POST", path, questionBody(topicId, "Seven",
+                "a", true, "b", false, "c", false, "d", false, "e", false, "f", false, "g", false)).status());
+    }
+
+    // ---- M8: deterministic ordering, asserted rather than just "same twice" ----
+
+    @Test
+    void topicsAreListedAlphabetically() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        auth("POST", "/api/topics", JSON.createObjectNode().put("name", "Zeta-" + suffix).toString());
+        auth("POST", "/api/topics", JSON.createObjectNode().put("name", "Alpha-" + suffix).toString());
+        List<String> names = new java.util.ArrayList<>();
+        for (JsonNode n : auth("GET", "/api/topics", null).json()) {
+            names.add(n.get("name").asText());
+        }
+        assertTrue(names.indexOf("Alpha-" + suffix) < names.indexOf("Zeta-" + suffix));
+        assertEquals(names.stream().sorted().toList(), names);
+    }
+
+    @Test
+    void quizzesAreListedInCreationOrder() throws Exception {
+        long first = createQuiz();
+        long second = createQuiz();
+        List<Long> ids = new java.util.ArrayList<>();
+        for (JsonNode n : auth("GET", "/api/quizzes", null).json()) {
+            ids.add(n.get("id").asLong());
+        }
+        assertTrue(ids.indexOf(first) < ids.indexOf(second));
+        assertEquals(ids.stream().sorted().toList(), ids);
+    }
+
+    // ---- M8: quiz-taking response shape exposes only what quiz-taking needs ----
+
+    @Test
+    void questionListingExposesOnlyQuizTakingFields() throws Exception {
+        long quizId = createQuiz();
+        long topicId = createTopic();
+        auth("POST", "/api/quizzes/" + quizId + "/questions", questionBody(topicId, "Q", "a", true, "b", false));
+        JsonNode q = auth("GET", "/api/quizzes/" + quizId + "/questions", null).json().get(0);
+        assertEquals(java.util.Set.of("id", "questionText", "position", "options"), fieldNames(q));
+        assertEquals(java.util.Set.of("id", "text"), fieldNames(q.get("options").get(0)));
+    }
+
+    private static java.util.Set<String> fieldNames(JsonNode node) {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        node.fieldNames().forEachRemaining(names::add);
+        return names;
+    }
 }
