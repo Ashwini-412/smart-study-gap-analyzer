@@ -72,15 +72,18 @@ backend/
     │   ├── java/com/smartstudy/
     │   │   ├── App.java                 entry point: load config, build/start HttpServer
     │   │   ├── config/                  AppConfig (properties + env, threshold validation)
-    │   │   ├── controller/              HealthController now; later AuthController,
-    │   │   │                            QuizController, AttemptController, PerformanceController
-    │   │   ├── service/                 (later) AuthService, QuizService, AttemptService,
+    │   │   ├── controller/              HealthController, AuthController, AuthFilter, Endpoint;
+    │   │   │                            later QuizController, AttemptController, PerformanceController
+    │   │   ├── service/                 AuthService; later QuizService, AttemptService,
     │   │   │                            GapAnalysisService, DashboardService
-    │   │   ├── repository/              Database now; later StudentRepository, QuizRepository, ...
-    │   │   ├── model/                   (later) Student, Topic, Quiz, Question, ...
-    │   │   ├── dto/                     Request/response records (HealthResponse, ErrorResponse)
-    │   │   └── util/                    HttpUtil now; later PasswordHasher, TokenGenerator,
-    │   │                                exception types, auth filter
+    │   │   ├── repository/              Database, StudentRepository + SessionRepository (interfaces),
+    │   │   │                            JdbcStudentRepository, JdbcSessionRepository, DataAccessException;
+    │   │   │                            later QuizRepository, ...
+    │   │   ├── model/                   Student, AuthSession; later Topic, Quiz, Question, ...
+    │   │   ├── dto/                     Request/response records (RegisterRequest, LoginRequest,
+    │   │   │                            LoginResponse, StudentResponse, AuthenticatedUser, ErrorResponse, ...)
+    │   │   └── util/                    HttpUtil, PasswordHasher, TokenGenerator, ErrorLog and the
+    │   │                                exception types (ValidationException, AuthenticationException, ...)
     │   └── resources/
     │       └── application.properties
     └── test/java/com/smartstudy/        mirrors main packages
@@ -202,7 +205,37 @@ All paths under `/api`, JSON bodies. "Auth" = requires bearer token.
 | GET | `/api/health` | no | Liveness check |
 
 Error format: `{ "error": "message" }` with 400 / 401 / 403 / 404 / 500.
+Validation failures (400) add `"fields": { "<field>": "<message>" }`; messages never echo the input.
 Ownership checks (attempt belongs to the caller) live in the service layer.
+
+### Authentication (implemented in Milestone 3)
+
+| Endpoint | Success | Failure |
+|---|---|---|
+| `POST /api/auth/register` `{name,email,password}` | 201 `{id,name,email}` | 400 validation, 409 duplicate email |
+| `POST /api/auth/login` `{email,password}` | 200 `{token,tokenType,expiresAt,student}` | 400 missing fields, 401 invalid credentials |
+| `GET /api/auth/me` | 200 `{id,name,email}` | 401 |
+| `POST /api/auth/logout` | 200 `{message}` | 401 |
+
+- **Passwords:** PBKDF2WithHmacSHA256, 210,000 iterations, 32-byte key, 16-byte `SecureRandom`
+  salt, both Base64 (compatible with `database/seed.sql`). Verified with `MessageDigest.isEqual`
+  (constant time). Unknown-email logins verify against a dummy hash so timing and message match
+  wrong-password logins.
+- **Password policy:** 8-128 characters with at least one letter and one digit. Login does not
+  re-apply the policy.
+- **Email:** trimmed, lower-cased, max 255, simple linear-time pattern. Name: 1-100 characters,
+  no control characters.
+- **Sessions:** opaque 256-bit `SecureRandom` token (Base64URL, 43 chars), returned once at login.
+  Only its SHA-256 hex digest is stored in `auth_sessions.token_hash`. Lifetime is
+  `auth.session.hours` (default 24, env `AUTH_SESSION_HOURS`).
+- **Revocation:** logout deletes the session row, so a revoked token can never authenticate; no
+  schema change was needed. Expired sessions found during a check are deleted too.
+- **Filter:** `AuthFilter` (a JDK `HttpServer` `Filter`) is attached to protected contexts. It requires
+  `Authorization: Bearer <token>`, rejects malformed headers without touching the database,
+  validates the session, and publishes an `AuthenticatedUser` on the exchange. Handlers get the
+  caller only from there; a client-supplied student id is never used.
+- **Time zones:** JDBC connections are pinned to UTC (`connectionTimeZone=UTC`) so `expires_at`
+  round-trips as the same instant regardless of JVM or server zone.
 
 ## 9. Development milestones
 

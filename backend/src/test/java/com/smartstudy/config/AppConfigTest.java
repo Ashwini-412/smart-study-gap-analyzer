@@ -93,6 +93,22 @@ class AppConfigTest {
     }
 
     @Test
+    void sessionLifetimeDefaultsTo24HoursAndCanBeOverridden() throws IOException {
+        assertEquals(24, loadDefaults(Map.of()).sessionHours());
+        assertEquals(2, loadDefaults(Map.of("AUTH_SESSION_HOURS", "2")).sessionHours());
+        // Property absent altogether (as in the inline configs above) also means 24.
+        assertEquals(24, loadText(BASE + "gap.threshold.strong=75\ngap.threshold.moderate=50\n", Map.of()).sessionHours());
+    }
+
+    @Test
+    void invalidSessionLifetimeIsRejected() {
+        for (String bad : new String[]{"0", "-1", "721", "abc", ""}) {
+            assertThrows(IllegalStateException.class,
+                    () -> loadDefaults(Map.of("AUTH_SESSION_HOURS", bad)), "hours: '" + bad + "'");
+        }
+    }
+
+    @Test
     void placeholderWithoutDefaultAndWithoutEnvFails() {
         String text = BASE.replace("db.name=x", "db.name=${MISSING_VAR}")
                 + "gap.threshold.strong=75\ngap.threshold.moderate=50\n";

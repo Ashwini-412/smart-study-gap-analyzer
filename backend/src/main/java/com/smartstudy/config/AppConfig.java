@@ -17,6 +17,9 @@ public final class AppConfig {
     private static final String RESOURCE = "application.properties";
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([A-Za-z0-9_]+)(?::([^}]*))?}");
 
+    private static final int DEFAULT_SESSION_HOURS = 24;
+    private static final int MAX_SESSION_HOURS = 24 * 30;
+
     private final String serverHost;
     private final int serverPort;
     private final String dbHost;
@@ -26,6 +29,7 @@ public final class AppConfig {
     private final String dbPassword;
     private final double strongThreshold;
     private final double moderateThreshold;
+    private final int sessionHours;
 
     private AppConfig(Properties p, Function<String, String> env) {
         this.serverHost = resolve(p, "server.host", env);
@@ -37,6 +41,9 @@ public final class AppConfig {
         this.dbPassword = resolve(p, "db.password", env);
         this.strongThreshold = parsePercent(resolve(p, "gap.threshold.strong", env), "gap.threshold.strong");
         this.moderateThreshold = parsePercent(resolve(p, "gap.threshold.moderate", env), "gap.threshold.moderate");
+        // Optional: absent means 24 hours.
+        this.sessionHours = parseHours(p.containsKey("auth.session.hours")
+                ? resolve(p, "auth.session.hours", env) : String.valueOf(DEFAULT_SESSION_HOURS), "auth.session.hours");
 
         if (moderateThreshold >= strongThreshold) {
             throw new IllegalStateException(
@@ -99,6 +106,18 @@ public final class AppConfig {
         }
     }
 
+    private static int parseHours(String value, String key) {
+        try {
+            int hours = Integer.parseInt(value);
+            if (hours < 1 || hours > MAX_SESSION_HOURS) {
+                throw new IllegalStateException(key + " must be between 1 and " + MAX_SESSION_HOURS + ", got " + value);
+            }
+            return hours;
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException(key + " must be an integer, got '" + value + "'");
+        }
+    }
+
     private static double parsePercent(String value, String key) {
         try {
             double d = Double.parseDouble(value);
@@ -145,6 +164,11 @@ public final class AppConfig {
 
     public double moderateThreshold() {
         return moderateThreshold;
+    }
+
+    /** How long a login session stays valid. */
+    public int sessionHours() {
+        return sessionHours;
     }
 
     /** JDBC URL without credentials. */
