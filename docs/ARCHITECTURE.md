@@ -198,7 +198,7 @@ All paths under `/api`, JSON bodies. "Auth" = requires bearer token.
 | GET | `/api/quizzes/{id}/questions` | yes | Questions + options, **no correctness data** |
 | POST | `/api/quizzes/{id}/attempts` | yes | Body: `{"answers": [{questionId, selectedOptionId}]}` → 201 `{id, quizId, submittedAt, totalQuestions, answeredCount}`. Evaluated and stored server-side; no score or correctness in the response (implemented in Milestone 9) |
 | GET | `/api/attempts` | yes | Current student's attempt history |
-| GET | `/api/attempts/{id}` | yes | One attempt with per-question outcome (own attempts only) |
+| GET | `/api/attempts/{id}` | yes | One of the caller's own attempts → 200 `{id, quizId, submittedAt, totalQuestions, answeredCount, correctCount, scorePercent, answers: [{questionId, selectedOptionId, correct}]}`, read from the evaluation stored at submission (no correct option ids). Another student's attempt → 404, same as unknown (implemented in Milestone 10) |
 | GET | `/api/performance/topics` | yes | Topic-wise accuracy |
 | GET | `/api/performance/gaps` | yes | Topics with classification |
 | GET | `/api/dashboard` | yes | Aggregate: overall score, recent attempts, topics, gaps |

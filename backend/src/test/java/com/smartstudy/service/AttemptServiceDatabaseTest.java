@@ -114,6 +114,23 @@ class AttemptServiceDatabaseTest {
     }
 
     @Test
+    void resultIsReadBackFromMySqlForTheOwnerOnly() {
+        AttemptSubmissionResponse r = service.submit(studentId, quizId, List.of(new AnswerSubmission(questionAId, correctA)));
+        attemptId = r.id();
+
+        var result = service.getResult(studentId, attemptId);
+        assertEquals(2, result.totalQuestions());
+        assertEquals(1, result.answeredCount());
+        assertEquals(1, result.correctCount());
+        assertEquals(0, new java.math.BigDecimal("50.00").compareTo(result.scorePercent()));
+        assertEquals(r.submittedAt(), result.submittedAt());
+        assertEquals(List.of(questionAId, questionBId),
+                result.answers().stream().map(a -> a.questionId()).toList(), "answers in question order");
+
+        assertThrows(com.smartstudy.util.NotFoundException.class, () -> service.getResult(studentId + 1_000_000, attemptId));
+    }
+
+    @Test
     void rejectedSubmissionWritesNoRows() throws Exception {
         assertThrows(ValidationException.class, () -> service.submit(studentId, quizId, List.of(
                 new AnswerSubmission(questionAId, correctA), new AnswerSubmission(questionAId, correctA))));

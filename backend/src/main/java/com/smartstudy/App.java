@@ -1,6 +1,7 @@
 package com.smartstudy;
 
 import com.smartstudy.config.AppConfig;
+import com.smartstudy.controller.AttemptController;
 import com.smartstudy.controller.AuthController;
 import com.smartstudy.controller.HealthController;
 import com.smartstudy.controller.QuizController;
@@ -86,6 +87,7 @@ public class App {
         HttpServer server = createServer(host, port, authService);
         new TopicController(topicService, authService).mount(server);
         new QuizController(quizService, questionService, attemptService, authService).mount(server);
+        new AttemptController(attemptService, authService).mount(server);
         return server;
     }
 }

@@ -243,6 +243,52 @@ class AttemptServiceTest {
         assertEquals(0, attempts.answerCount());
     }
 
+    // ---- getResult (Milestone 10) ----
+
+    @Test
+    void ownerGetsTheStoredEvaluation() {
+        var submitted = service.submit(7L, quizId, List.of(new AnswerSubmission(questionAId, correctOptionAId)));
+
+        var r = service.getResult(7L, submitted.id());
+        assertEquals(submitted.id(), r.id());
+        assertEquals(quizId, r.quizId());
+        assertEquals(submitted.submittedAt(), r.submittedAt());
+        assertEquals(2, r.totalQuestions());
+        assertEquals(1, r.answeredCount());
+        assertEquals(1, r.correctCount());
+        assertEquals(0, new java.math.BigDecimal("50.00").compareTo(r.scorePercent()));
+        assertEquals(2, r.answers().size());
+        assertEquals(questionAId, r.answers().get(0).questionId());
+        assertTrue(r.answers().get(0).correct());
+        assertEquals(null, r.answers().get(1).selectedOptionId());
+        assertEquals(false, r.answers().get(1).correct());
+    }
+
+    @Test
+    void resultIsReadFromPersistedDataNotRecomputed() {
+        // Stored values that the answer rows would NOT reproduce if the service re-scored them.
+        var created = attempts.createWithAnswers(7L, quizId, 2, 1, new java.math.BigDecimal("42.00"), List.of(
+                new com.smartstudy.repository.QuizAttemptRepository.NewAnswer(questionAId, correctOptionAId, true),
+                new com.smartstudy.repository.QuizAttemptRepository.NewAnswer(questionBId, correctOptionBId, true)));
+
+        var r = service.getResult(7L, created.attempt().id());
+        assertEquals(1, r.correctCount());
+        assertEquals(0, new java.math.BigDecimal("42.00").compareTo(r.scorePercent()));
+    }
+
+    @Test
+    void anotherStudentsAttemptIsNotFound() {
+        var submitted = service.submit(7L, quizId, List.of(new AnswerSubmission(questionAId, correctOptionAId)));
+        var e = assertThrows(NotFoundException.class, () -> service.getResult(8L, submitted.id()));
+        var unknown = assertThrows(NotFoundException.class, () -> service.getResult(8L, 999_999L));
+        assertEquals(unknown.getMessage(), e.getMessage(), "indistinguishable from a missing attempt");
+    }
+
+    @Test
+    void unknownAttemptIsNotFound() {
+        assertThrows(NotFoundException.class, () -> service.getResult(7L, 999_999L));
+    }
+
     private long qbWrongOption() {
         return questions.optionsByQuestionIds(List.of(questionBId)).get(questionBId).stream()
                 .filter(o -> !o.correct()).findFirst().orElseThrow().id();

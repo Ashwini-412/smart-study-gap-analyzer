@@ -120,8 +120,8 @@ final class QuizIdRouter implements HttpHandler {
         return out;
     }
 
-    /** A positive long, or null if {@code text} is not one (never a valid resource id). */
-    private static Long parseId(String text) {
+    /** A positive long, or null if {@code text} is not one (never a valid resource id). Shared with AttemptController. */
+    static Long parseId(String text) {
         try {
             long id = Long.parseLong(text);
             return id > 0 ? id : null;

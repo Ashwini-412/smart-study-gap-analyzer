@@ -1,8 +1,11 @@
 package com.smartstudy.service;
 
+import com.smartstudy.dto.AttemptResultResponse;
 import com.smartstudy.dto.AttemptSubmissionResponse;
+import com.smartstudy.model.AttemptAnswer;
 import com.smartstudy.model.Question;
 import com.smartstudy.model.QuestionOption;
+import com.smartstudy.model.QuizAttempt;
 import com.smartstudy.repository.QuestionRepository;
 import com.smartstudy.repository.QuizAttemptRepository;
 import com.smartstudy.repository.QuizRepository;
@@ -110,6 +113,31 @@ public class AttemptService {
         return new AttemptSubmissionResponse(created.attempt().id(), quizId,
                 created.attempt().submittedAt() == null ? null : created.attempt().submittedAt().toString(),
                 totalQuestions, answeredCount);
+    }
+
+    /**
+     * The stored evaluation of one attempt, for its owner only. Nothing is re-scored: every value
+     * comes from what {@link #submit} persisted (answeredCount is derived from the stored answer
+     * rows). An attempt that does not exist and one that belongs to another student are both
+     * reported as {@link NotFoundException}, so a caller cannot probe for other students' attempt
+     * ids. Two queries regardless of question count.
+     */
+    public AttemptResultResponse getResult(long studentId, long attemptId) {
+        QuizAttempt attempt = attempts.findById(attemptId)
+                .filter(a -> a.studentId() == studentId)
+                .orElseThrow(() -> new NotFoundException("Attempt not found"));
+
+        List<AttemptResultResponse.Answer> answers = new ArrayList<>();
+        int answeredCount = 0;
+        for (AttemptAnswer a : attempts.findAnswersByAttemptId(attemptId)) {
+            if (a.selectedOptionId() != null) {
+                answeredCount++;
+            }
+            answers.add(new AttemptResultResponse.Answer(a.questionId(), a.selectedOptionId(), a.correct()));
+        }
+        return new AttemptResultResponse(attempt.id(), attempt.quizId(),
+                attempt.submittedAt() == null ? null : attempt.submittedAt().toString(),
+                attempt.totalQuestions(), answeredCount, attempt.correctCount(), attempt.scorePercent(), answers);
     }
 
     private QuizStructure loadAndValidate(long quizId, List<AnswerSubmission> answers) {

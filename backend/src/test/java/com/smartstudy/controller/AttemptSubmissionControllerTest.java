@@ -44,7 +44,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** POST /api/quizzes/{id}/attempts over real HTTP, with in-memory repositories. */
+/**
+ * The attempt workflow over real HTTP, with in-memory repositories: submission
+ * (POST /api/quizzes/{id}/attempts, Milestone 9) and result retrieval (GET /api/attempts/{id},
+ * Milestone 10).
+ */
 class AttemptSubmissionControllerTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -63,6 +67,7 @@ class AttemptSubmissionControllerTest {
     private long wrongA;
     private long questionBId;
     private long correctB;
+    private long wrongB;
 
     @BeforeAll
     static void start() throws Exception {
@@ -131,6 +136,7 @@ class AttemptSubmissionControllerTest {
         JsonNode qb = createQuestion(topicId, "3 + 3 = ?", "6", true, "5", false);
         questionBId = qb.get("id").asLong();
         correctB = qb.get("options").get(0).get("id").asLong();
+        wrongB = qb.get("options").get(1).get("id").asLong();
     }
 
     private JsonNode createQuestion(long topicId, String text, Object... pairs) throws Exception {
@@ -331,5 +337,113 @@ class AttemptSubmissionControllerTest {
         assertEquals(405, call("GET", "/api/quizzes/" + quizId + "/attempts", null, token).status());
         assertEquals(404, call("POST", "/api/quizzes/" + quizId + "/attempts/extra", answers(questionAId, correctA),
                 token).status());
+    }
+
+    // ==== Milestone 10: GET /api/attempts/{id} ====
+
+    private long submitted(String bearer, long... pairs) throws Exception {
+        return call("POST", "/api/quizzes/" + quizId + "/attempts", answers(pairs), bearer).json().get("id").asLong();
+    }
+
+    private Res result(long attemptId, String bearer) throws Exception {
+        return call("GET", "/api/attempts/" + attemptId, null, bearer);
+    }
+
+    @Test
+    void ownerRetrievesTheStoredResult() throws Exception {
+        long id = submitted(token, questionAId, correctA, questionBId, wrongB);
+        Res r = result(id, token);
+        assertEquals(200, r.status());
+        JsonNode j = r.json();
+        assertEquals(Set.of("id", "quizId", "submittedAt", "totalQuestions", "answeredCount", "correctCount",
+                "scorePercent", "answers"), fieldNames(j));
+        assertEquals(id, j.get("id").asLong());
+        assertEquals(quizId, j.get("quizId").asLong());
+        assertEquals(2, j.get("totalQuestions").asInt());
+        assertEquals(2, j.get("answeredCount").asInt());
+        assertEquals(1, j.get("correctCount").asInt());
+        assertEquals(0, new java.math.BigDecimal("50.00").compareTo(j.get("scorePercent").decimalValue()));
+
+        JsonNode answers = j.get("answers");
+        assertEquals(2, answers.size());
+        assertEquals(questionAId, answers.get(0).get("questionId").asLong());
+        assertEquals(correctA, answers.get(0).get("selectedOptionId").asLong());
+        assertTrue(answers.get(0).get("correct").asBoolean());
+        assertEquals(questionBId, answers.get(1).get("questionId").asLong());
+        assertFalse(answers.get(1).get("correct").asBoolean());
+    }
+
+    @Test
+    void resultMatchesWhatWasPersistedAtSubmission() throws Exception {
+        long id = submitted(token, questionAId, wrongA);
+        QuizAttempt stored = attempts.findById(id).orElseThrow();
+        JsonNode j = result(id, token).json();
+        assertEquals(stored.correctCount(), j.get("correctCount").asInt());
+        assertEquals(0, stored.scorePercent().compareTo(j.get("scorePercent").decimalValue()));
+        assertEquals(stored.submittedAt().toString(), j.get("submittedAt").asText());
+        assertEquals(1, j.get("answeredCount").asInt());
+        assertTrue(j.get("answers").get(1).get("selectedOptionId").isNull(), "unanswered question");
+    }
+
+    @Test
+    void resultRequiresAuthentication() throws Exception {
+        long id = submitted(token, questionAId, correctA);
+        assertEquals(401, result(id, null).status());
+        assertEquals(401, result(id, "A".repeat(43)).status());
+    }
+
+    @Test
+    void unknownAttemptIs404() throws Exception {
+        assertEquals(404, result(999_999_999L, token).status());
+    }
+
+    @Test
+    void anotherStudentsAttemptIs404AndIndistinguishableFromUnknown() throws Exception {
+        long mine = submitted(token, questionAId, correctA);
+        String otherToken = (String) freshStudent()[0];
+
+        Res theirs = result(mine, otherToken);
+        Res unknown = result(999_999_999L, otherToken);
+        assertEquals(404, theirs.status());
+        assertEquals(unknown.body(), theirs.body());
+    }
+
+    @Test
+    void studentIdInTheQueryStringIsIgnored() throws Exception {
+        long mine = submitted(token, questionAId, correctA);
+        String otherToken = (String) freshStudent()[0];
+        assertEquals(404, call("GET", "/api/attempts/" + mine + "?studentId=" + studentId, null, otherToken).status());
+    }
+
+    @Test
+    void resultDoesNotLeakTheAnswerKeyOrInternalFields() throws Exception {
+        long id = submitted(token, questionAId, wrongA);
+        JsonNode j = result(id, token).json();
+        for (JsonNode a : j.get("answers")) {
+            assertEquals(Set.of("questionId", "selectedOptionId", "correct"), fieldNames(a),
+                    "no correct option id, option text or internal ids per answer");
+        }
+        String body = j.toString().toLowerCase();
+        for (String forbidden : List.of("studentid", "student_id", "attempt_id", "is_correct", "correctoption",
+                "password", "hash", "salt", "token")) {
+            assertFalse(body.contains(forbidden), "response must not contain '" + forbidden + "': " + body);
+        }
+    }
+
+    @Test
+    void malformedOrNonNumericIdsAre404() throws Exception {
+        for (String path : List.of("/api/attempts/abc", "/api/attempts/0", "/api/attempts/-1", "/api/attempts/",
+                "/api/attempts/1.5", "/api/attempts/1/extra")) {
+            assertEquals(404, call("GET", path, null, token).status(), path);
+        }
+    }
+
+    @Test
+    void onlyGetIsAllowedForResults() throws Exception {
+        long id = submitted(token, questionAId, correctA);
+        for (String method : List.of("POST", "PUT", "DELETE")) {
+            assertEquals(405, call(method, "/api/attempts/" + id, method.equals("POST") ? "{}" : null, token).status(),
+                    method);
+        }
     }
 }
