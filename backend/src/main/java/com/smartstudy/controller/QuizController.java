@@ -1,6 +1,7 @@
 package com.smartstudy.controller;
 
 import com.smartstudy.dto.CreateQuizRequest;
+import com.smartstudy.service.AttemptService;
 import com.smartstudy.service.AuthService;
 import com.smartstudy.service.QuestionService;
 import com.smartstudy.service.QuizService;
@@ -13,9 +14,9 @@ import java.util.Map;
 
 /**
  * /api/quizzes: list (GET) and create (POST).
- * /api/quizzes/{id} and /api/quizzes/{id}/questions are handled by {@link QuizIdRouter}, mounted
- * on the "/api/quizzes/" prefix context since HttpServer contexts cannot themselves match a path
- * parameter. All routes require a valid session.
+ * /api/quizzes/{id}, /api/quizzes/{id}/questions and /api/quizzes/{id}/attempts are handled by
+ * {@link QuizIdRouter}, mounted on the "/api/quizzes/" prefix context since HttpServer contexts
+ * cannot themselves match a path parameter. All routes require a valid session.
  */
 public class QuizController {
 
@@ -23,18 +24,21 @@ public class QuizController {
 
     private final QuizService quizzes;
     private final QuestionService questions;
+    private final AttemptService attempts;
     private final AuthService authService;
 
-    public QuizController(QuizService quizzes, QuestionService questions, AuthService authService) {
+    public QuizController(QuizService quizzes, QuestionService questions, AttemptService attempts,
+                          AuthService authService) {
         this.quizzes = quizzes;
         this.questions = questions;
+        this.attempts = attempts;
         this.authService = authService;
     }
 
     public void mount(HttpServer server) {
         server.createContext(PATH, new Endpoint(PATH, Map.of("GET", this::list, "POST", this::create)))
                 .getFilters().add(new AuthFilter(authService));
-        server.createContext(PATH + "/", new QuizIdRouter(quizzes, questions))
+        server.createContext(PATH + "/", new QuizIdRouter(quizzes, questions, attempts))
                 .getFilters().add(new AuthFilter(authService));
     }
 

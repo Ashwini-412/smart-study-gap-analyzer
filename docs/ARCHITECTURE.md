@@ -196,7 +196,7 @@ All paths under `/api`, JSON bodies. "Auth" = requires bearer token.
 | POST | `/api/auth/logout` | yes | Invalidate token |
 | GET | `/api/quizzes` | yes | List quizzes |
 | GET | `/api/quizzes/{id}/questions` | yes | Questions + options, **no correctness data** |
-| POST | `/api/quizzes/{id}/submit` | yes | Body: `[{questionId, selectedOptionId}]` → evaluated result |
+| POST | `/api/quizzes/{id}/attempts` | yes | Body: `{"answers": [{questionId, selectedOptionId}]}` → 201 `{id, quizId, submittedAt, totalQuestions, answeredCount}`. Evaluated and stored server-side; no score or correctness in the response (implemented in Milestone 9) |
 | GET | `/api/attempts` | yes | Current student's attempt history |
 | GET | `/api/attempts/{id}` | yes | One attempt with per-question outcome (own attempts only) |
 | GET | `/api/performance/topics` | yes | Topic-wise accuracy |

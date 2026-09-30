@@ -7,6 +7,7 @@ import com.smartstudy.controller.QuizController;
 import com.smartstudy.controller.TopicController;
 import com.smartstudy.repository.Database;
 import com.smartstudy.repository.JdbcQuestionRepository;
+import com.smartstudy.repository.JdbcQuizAttemptRepository;
 import com.smartstudy.repository.JdbcQuizRepository;
 import com.smartstudy.repository.JdbcSessionRepository;
 import com.smartstudy.repository.JdbcStudentRepository;
@@ -14,6 +15,7 @@ import com.smartstudy.repository.JdbcTopicRepository;
 import com.smartstudy.repository.QuestionRepository;
 import com.smartstudy.repository.QuizRepository;
 import com.smartstudy.repository.TopicRepository;
+import com.smartstudy.service.AttemptService;
 import com.smartstudy.service.AuthService;
 import com.smartstudy.service.QuestionService;
 import com.smartstudy.service.QuizService;
@@ -51,9 +53,11 @@ public class App {
         TopicService topicService = new TopicService(topicRepository);
         QuizService quizService = new QuizService(quizRepository);
         QuestionService questionService = new QuestionService(questionRepository, quizRepository, topicRepository);
+        AttemptService attemptService =
+                new AttemptService(quizRepository, questionRepository, new JdbcQuizAttemptRepository(database));
 
         HttpServer server = createServer(config.serverHost(), config.serverPort(), authService,
-                topicService, quizService, questionService);
+                topicService, quizService, questionService, attemptService);
         server.start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop(1)));
         System.out.println("Smart Study Gap Analyzer listening on http://" + config.serverHost() + ":"
@@ -75,13 +79,13 @@ public class App {
         return server;
     }
 
-    /** Health, authentication, and quiz management (topics, quizzes, questions). */
+    /** Health, authentication, quiz management (topics, quizzes, questions) and attempt submission. */
     public static HttpServer createServer(String host, int port, AuthService authService, TopicService topicService,
-                                           QuizService quizService, QuestionService questionService)
-            throws IOException {
+                                           QuizService quizService, QuestionService questionService,
+                                           AttemptService attemptService) throws IOException {
         HttpServer server = createServer(host, port, authService);
         new TopicController(topicService, authService).mount(server);
-        new QuizController(quizService, questionService, authService).mount(server);
+        new QuizController(quizService, questionService, attemptService, authService).mount(server);
         return server;
     }
 }

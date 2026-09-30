@@ -1,12 +1,18 @@
 package com.smartstudy.service;
 
+import com.smartstudy.dto.AttemptSubmissionResponse;
 import com.smartstudy.model.Question;
 import com.smartstudy.model.QuestionOption;
 import com.smartstudy.repository.QuestionRepository;
+import com.smartstudy.repository.QuizAttemptRepository;
 import com.smartstudy.repository.QuizRepository;
 import com.smartstudy.util.NotFoundException;
 import com.smartstudy.util.ValidationException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,46 +20,99 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Business-rule validation for quiz submissions: the service-layer foundation a later
- * quiz-taking milestone builds on. This deliberately does not grade anything (no comparison
- * against {@code question_options.is_correct}, no score calculation) and does not persist
- * anything - persistence is {@code QuizAttemptRepository} (Milestone 5), and grading/scoring
- * belongs to the milestone that implements evaluation. Nothing here depends on
- * {@code QuizAttemptRepository}: none of the rules below read or write quiz_attempts/
- * attempt_answers, so introducing that dependency now would be speculative.
+ * Quiz submissions: validation against the quiz's real structure, server-side evaluation, and
+ * atomic persistence of the attempt with its answers.
  *
- * <p>{@code studentId} in the eventual submission flow must always be the id the caller resolved
- * from the authenticated session (e.g. {@code AuthenticatedUser.studentId()}), never a value read
- * from the request body - mirroring how every other service in this project resolves identity
- * (see {@code AuthFilter}/{@code AuthenticatedUser}). This class has no parameter through which a
- * caller could pass a claimed identity or a claimed score, so neither can leak in by accident.
+ * <p>Evaluation happens here rather than in a later milestone because the schema requires it at
+ * insert time: quiz_attempts.correct_count / score_percent and attempt_answers.is_correct are all
+ * NOT NULL. Every value is derived from server data ({@code question_options.is_correct}); nothing
+ * about correctness or score is ever read from the client.
+ *
+ * <p>{@code studentId} passed to {@link #submit} must be the id the caller resolved from the
+ * authenticated session ({@code AuthenticatedUser.studentId()}), never a value from the request.
  */
 public class AttemptService {
 
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+
     private final QuizRepository quizzes;
     private final QuestionRepository questions;
+    private final QuizAttemptRepository attempts;
 
-    public AttemptService(QuizRepository quizzes, QuestionRepository questions) {
+    public AttemptService(QuizRepository quizzes, QuestionRepository questions, QuizAttemptRepository attempts) {
         this.quizzes = quizzes;
         this.questions = questions;
+        this.attempts = attempts;
     }
 
     /** One submitted answer: the question being answered, and the option chosen (null = left unanswered). */
     public record AnswerSubmission(Long questionId, Long selectedOptionId) {
     }
 
+    /** The quiz's questions (position order) and each question's options, loaded once per request. */
+    private record QuizStructure(List<Question> questions, Map<Long, List<QuestionOption>> options) {
+    }
+
     /**
      * Validates a proposed submission against the quiz's actual structure:
      * <ul>
      *   <li>the quiz must exist;</li>
+     *   <li>at least one answer must be supplied, and no answer may be null;</li>
      *   <li>every answered question must belong to that quiz;</li>
      *   <li>every selected option must belong to the question it answers;</li>
      *   <li>no question may be answered more than once in the same submission.</li>
      * </ul>
      * Throws {@link NotFoundException} if the quiz does not exist, or {@link ValidationException}
-     * (with one field error per violation) otherwise. Never grades or persists anything.
+     * (with one field error per violation) otherwise. Does not evaluate or persist anything.
      */
     public void validateSubmission(long quizId, List<AnswerSubmission> answers) {
+        loadAndValidate(quizId, answers);
+    }
+
+    /**
+     * Validates, evaluates and stores a submission for the authenticated student. Every question in
+     * the quiz gets an answer row; questions the student did not answer are stored with no selected
+     * option and count as incorrect (docs/ARCHITECTURE.md section 7). The attempt and all of its
+     * answers are written in one transaction by the repository.
+     */
+    public AttemptSubmissionResponse submit(long studentId, long quizId, List<AnswerSubmission> answers) {
+        QuizStructure quiz = loadAndValidate(quizId, answers);
+
+        Map<Long, Long> selectedByQuestion = new HashMap<>(); // null values allowed: explicitly unanswered
+        for (AnswerSubmission a : answers) {
+            selectedByQuestion.put(a.questionId(), a.selectedOptionId());
+        }
+
+        List<QuizAttemptRepository.NewAnswer> rows = new ArrayList<>();
+        int correctCount = 0;
+        int answeredCount = 0;
+        for (Question q : quiz.questions()) {
+            Long selected = selectedByQuestion.get(q.id());
+            boolean correct = false;
+            if (selected != null) {
+                answeredCount++;
+                correct = quiz.options().getOrDefault(q.id(), List.of()).stream()
+                        .anyMatch(o -> o.id() == selected && o.correct());
+            }
+            if (correct) {
+                correctCount++;
+            }
+            rows.add(new QuizAttemptRepository.NewAnswer(q.id(), selected, correct));
+        }
+
+        // Validation guarantees at least one answer to a question of this quiz, so total > 0.
+        int totalQuestions = quiz.questions().size();
+        BigDecimal scorePercent = BigDecimal.valueOf(correctCount).multiply(HUNDRED)
+                .divide(BigDecimal.valueOf(totalQuestions), 2, RoundingMode.HALF_UP);
+
+        QuizAttemptRepository.Created created =
+                attempts.createWithAnswers(studentId, quizId, totalQuestions, correctCount, scorePercent, rows);
+        return new AttemptSubmissionResponse(created.attempt().id(), quizId,
+                created.attempt().submittedAt() == null ? null : created.attempt().submittedAt().toString(),
+                totalQuestions, answeredCount);
+    }
+
+    private QuizStructure loadAndValidate(long quizId, List<AnswerSubmission> answers) {
         if (quizzes.findById(quizId).isEmpty()) {
             throw new NotFoundException("Quiz not found");
         }
@@ -61,24 +120,23 @@ public class AttemptService {
             throw new ValidationException(Map.of("answers", "At least one answer is required"));
         }
 
+        List<Question> quizQuestions = questions.findByQuizId(quizId);
         Set<Long> validQuestionIds = new HashSet<>();
-        for (Question q : questions.findByQuizId(quizId)) {
+        for (Question q : quizQuestions) {
             validQuestionIds.add(q.id());
         }
-
-        Set<Long> questionIdsInSubmission = new HashSet<>();
-        for (AnswerSubmission a : answers) {
-            if (a.questionId() != null) {
-                questionIdsInSubmission.add(a.questionId());
-            }
-        }
-        Map<Long, List<QuestionOption>> optionsByQuestion = questions.optionsByQuestionIds(questionIdsInSubmission);
+        Map<Long, List<QuestionOption>> optionsByQuestion = questions.optionsByQuestionIds(validQuestionIds);
 
         Map<String, String> errors = new LinkedHashMap<>();
         Set<Long> seenQuestionIds = new HashSet<>();
         for (int i = 0; i < answers.size(); i++) {
             AnswerSubmission a = answers.get(i);
             String prefix = "answers[" + i + "]";
+            if (a == null) {
+                // JSON "answers": [null, ...] - malformed input, not a server error.
+                errors.put(prefix, "Answer is required");
+                continue;
+            }
             if (a.questionId() == null) {
                 errors.put(prefix + ".questionId", "Question id is required");
                 continue;
@@ -103,5 +161,6 @@ public class AttemptService {
         if (!errors.isEmpty()) {
             throw new ValidationException(errors);
         }
+        return new QuizStructure(quizQuestions, optionsByQuestion);
     }
 }

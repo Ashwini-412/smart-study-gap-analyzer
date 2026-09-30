@@ -63,7 +63,9 @@ class AuthIntegrationTest {
         QuestionService questionService =
                 new QuestionService(new InMemoryQuestionRepository(), quizRepo, new InMemoryTopicRepository());
 
-        server = App.createServer("127.0.0.1", 0, authService, topicService, quizService, questionService);
+        server = App.createServer("127.0.0.1", 0, authService, topicService, quizService, questionService,
+                new com.smartstudy.service.AttemptService(quizRepo, new InMemoryQuestionRepository(),
+                        new com.smartstudy.support.InMemoryQuizAttemptRepository()));
         server.start();
         base = "http://127.0.0.1:" + server.getAddress().getPort();
     }
