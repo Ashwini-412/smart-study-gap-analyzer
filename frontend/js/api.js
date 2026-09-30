@@ -111,8 +111,8 @@ export async function api(method, path, body, { auth = true } = {}) {
     sessionExpired();
     throw new ApiError(401, "Your session has expired. Please sign in again.");
   }
-  const message = data && typeof data.error === "string" ? data.error : (DEFAULT_MESSAGES[response.status]
-      || `Request failed (${response.status}).`);
+  const message = response.status < 500 && data && typeof data.error === "string" ? data.error
+      : (DEFAULT_MESSAGES[response.status] || (response.status >= 500 ? DEFAULT_MESSAGES[500] : `Request failed (${response.status}).`));
   const fields = data && data.fields && typeof data.fields === "object" ? data.fields : null;
   throw new ApiError(response.status, message, fields);
 }

@@ -1,5 +1,5 @@
 import { api, ApiError } from "./api.js";
-import { clear, showFormError } from "./ui.js";
+import { clear, clearInvalid, showFormError } from "./ui.js";
 
 const form = document.getElementById("register-form");
 const nameInput = document.getElementById("name");
@@ -12,9 +12,11 @@ const formError = document.getElementById("form-error");
 form.addEventListener("submit", async event => {
   event.preventDefault();
   clear(formError);
+  clearInvalid(form);
   // A typo check only; the password policy itself is enforced by the backend.
   if (password.value !== confirm.value) {
     showFormError(formError, new ApiError(400, "The passwords do not match."));
+    confirm.focus();
     return;
   }
   submit.disabled = true;
@@ -27,7 +29,8 @@ form.addEventListener("submit", async event => {
   } catch (err) {
     password.value = "";
     confirm.value = "";
-    showFormError(formError, err);
+    showFormError(formError, err, form);
+    form.querySelector("[aria-invalid]")?.focus();
   } finally {
     submit.disabled = false;
   }

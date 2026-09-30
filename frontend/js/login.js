@@ -1,5 +1,5 @@
 import { api, ApiError, getToken, setToken } from "./api.js";
-import { clear, showFormError, showNotice } from "./ui.js";
+import { clear, clearInvalid, showFormError, showNotice } from "./ui.js";
 
 const form = document.getElementById("login-form");
 const email = document.getElementById("email");
@@ -22,6 +22,7 @@ if (params.has("expired")) {
 form.addEventListener("submit", async event => {
   event.preventDefault();
   clear(formError);
+  clearInvalid(form);
   submit.disabled = true;
   try {
     const result = await api("POST", "/api/auth/login",
@@ -34,9 +35,9 @@ form.addEventListener("submit", async event => {
     if (err instanceof ApiError && err.status === 401) {
       showFormError(formError, new ApiError(401, "Invalid email or password."));
     } else {
-      showFormError(formError, err);
+      showFormError(formError, err, form);
     }
-    password.focus();
+    (form.querySelector("[aria-invalid]") || password).focus();
   } finally {
     submit.disabled = false;
   }

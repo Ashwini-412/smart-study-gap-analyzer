@@ -1,8 +1,10 @@
-# Smart Study Gap Analyzer — Architecture (Milestone 1)
+# Smart Study Gap Analyzer — Architecture
 
-Status: design only. No application code exists yet.
+Status: implemented and validated through Milestone 15 (see section 9). Written as the
+Milestone 1 design and updated as each milestone landed; setup and run instructions are in the
+root `README.md`.
 
-## 1. Environment (verified 2026-09-28)
+## 1. Development environment (verified 2026-09-28, Milestone 1)
 
 | Item | Value |
 |---|---|
@@ -226,7 +228,7 @@ gap.threshold.moderate=50
 Startup validation: `0 <= moderate < strong <= 100`, otherwise fail fast.
 Boundary rule uses `< strong` (not `<= 74`), so 74.5% is Moderate.
 
-## 8. Initial API plan
+## 8. API
 
 All paths under `/api`, JSON bodies. "Auth" = requires bearer token.
 
@@ -289,7 +291,31 @@ Ownership checks (attempt belongs to the caller) live in the service layer.
 
 ## 9. Development milestones
 
-| # | Milestone | Outcome |
+Delivered (from the git history):
+
+| # | Milestone |
+|---|---|
+| 1 | Analysis, environment check, this architecture |
+| 2 | Project skeleton, schema, seed data, DB connection, `/api/health` |
+| 3 | Registration, login, sessions, auth filter |
+| 4 | Topics, quizzes, questions (management + listing without answer key) |
+| 5 | Repository/DAO audit, quiz-attempt persistence (transactional) |
+| 6 | Service-layer audit, attempt validation |
+| 7 | Authentication integration audit, cross-controller auth tests |
+| 8 | Quiz management API audit, malformed-input hardening |
+| 9 | Attempt submission with server-side evaluation |
+| 10 | Attempt result retrieval with ownership checks |
+| 11 | Attempt history |
+| 12 | Topic gap analysis with configurable thresholds |
+| 13 | Vanilla frontend, same-origin static file serving |
+| 14 | Testing and validation pass |
+| 15 | Final polish, README, demo readiness |
+
+The original Milestone 1 plan is kept below for context. Its numbering differs from the
+delivered milestones; the planned dashboard API (plan item 8) was not built, and the dashboard
+page composes existing endpoints instead (section 4).
+
+| # | Planned milestone | Outcome |
 |---|---|---|
 | 1 | Analysis, env check, architecture | This document |
 | 2 | Project skeleton + DB foundation | `pom.xml`, config, `.gitignore`, schema SQL, DB user/connection, `/api/health` |

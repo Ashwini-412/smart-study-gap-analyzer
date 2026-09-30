@@ -5,8 +5,9 @@
 --
 -- Students: password_hash / password_salt are Base64 of PBKDF2WithHmacSHA256
 -- (210000 iterations, 256-bit key, 16-byte random per-user salt). No plaintext is
--- stored. All seed students share one development-only password, recorded only
--- in the test fixture backend/src/test/java/com/smartstudy/support/SeedData.java.
+-- stored. All seed students share one development-only password, which is not
+-- committed anywhere; the seed compatibility test reads it from the
+-- SEED_TEST_PASSWORD environment variable. For a demo, register a new student.
 --
 -- Data shape (for testing gap analysis later):
 --   Asha  - strong Algebra, weaker Geometry, weak Mechanics

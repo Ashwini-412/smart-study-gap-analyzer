@@ -64,12 +64,43 @@ export function showContent(container, ...nodes) {
 
 // ---- inline messages for forms ----
 
-/** Shows an ApiError's message and any per-field messages (their text is fixed by the backend). */
-export function showFormError(container, err) {
-  const items = err && err.fields ? Object.entries(err.fields).map(([field, msg]) => el("li", {}, `${field}: ${msg}`)) : [];
+/**
+ * Shows an ApiError's message and any per-field messages (their text is fixed by the backend and
+ * already names the field, e.g. "Email is required"). With a form, inputs whose id matches a field
+ * are marked aria-invalid and point at the message; marks from a previous attempt are cleared.
+ */
+export function showFormError(container, err, form = null) {
+  const fields = err && err.fields ? Object.entries(err.fields) : [];
+  if (!container.id) {
+    container.id = `form-error-${Math.random().toString(36).slice(2)}`;
+  }
+  if (form) {
+    clearInvalid(form);
+    for (const [field] of fields) {
+      const input = form.querySelector(`#${CSS.escape(field)}`);
+      if (input) {
+        input.setAttribute("aria-invalid", "true");
+        input.dataset.errorRef = container.id;
+        input.setAttribute("aria-describedby",
+            [input.getAttribute("aria-describedby"), container.id].filter(Boolean).join(" "));
+      }
+    }
+  }
+  const message = fields.length ? "Please correct the following:" : (err && err.message ? err.message : "Unexpected error.");
   clear(container).append(el("div", { class: "alert alert-error", role: "alert" },
-      el("p", { text: err && err.message ? err.message : "Unexpected error." }),
-      items.length ? el("ul", {}, items) : null));
+      el("p", { text: message }),
+      fields.length ? el("ul", {}, fields.map(([, msg]) => el("li", { text: msg }))) : null));
+}
+
+/** Removes the aria-invalid marks showFormError added to a form's inputs. */
+export function clearInvalid(form) {
+  for (const input of form.querySelectorAll("[aria-invalid]")) {
+    input.removeAttribute("aria-invalid");
+    const kept = (input.getAttribute("aria-describedby") || "").split(" ")
+        .filter(id => id && id !== input.dataset.errorRef).join(" ");
+    kept ? input.setAttribute("aria-describedby", kept) : input.removeAttribute("aria-describedby");
+    delete input.dataset.errorRef;
+  }
 }
 
 export function showNotice(container, message, kind = "info") {
