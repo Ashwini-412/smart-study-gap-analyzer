@@ -438,6 +438,106 @@ class AttemptSubmissionControllerTest {
         }
     }
 
+    // ==== Milestone 11: GET /api/attempts ====
+
+    private Res history(String bearer) throws Exception {
+        return call("GET", "/api/attempts", null, bearer);
+    }
+
+    @Test
+    void historyListsTheStudentsAttemptsNewestFirst() throws Exception {
+        long first = submitted(token, questionAId, correctA);
+        long second = submitted(token, questionAId, wrongA, questionBId, correctB);
+
+        Res r = history(token);
+        assertEquals(200, r.status());
+        assertTrue(r.json().isArray());
+        assertEquals(2, r.json().size());
+        assertEquals(second, r.json().get(0).get("id").asLong(), "newest first");
+        assertEquals(first, r.json().get(1).get("id").asLong());
+    }
+
+    @Test
+    void historyItemCarriesTheStoredEvaluationAndNothingElse() throws Exception {
+        long id = submitted(token, questionAId, correctA);
+        QuizAttempt stored = attempts.findById(id).orElseThrow();
+
+        JsonNode item = history(token).json().get(0);
+        assertEquals(Set.of("id", "quizId", "submittedAt", "totalQuestions", "answeredCount", "correctCount",
+                "scorePercent"), fieldNames(item));
+        assertEquals(quizId, item.get("quizId").asLong());
+        assertEquals(stored.submittedAt().toString(), item.get("submittedAt").asText());
+        assertEquals(2, item.get("totalQuestions").asInt());
+        assertEquals(1, item.get("answeredCount").asInt(), "question B was left unanswered");
+        assertEquals(stored.correctCount(), item.get("correctCount").asInt());
+        assertEquals(0, stored.scorePercent().compareTo(item.get("scorePercent").decimalValue()));
+        String body = item.toString().toLowerCase();
+        for (String forbidden : List.of("studentid", "student_id", "answers", "is_correct", "password", "token")) {
+            assertFalse(body.contains(forbidden), forbidden);
+        }
+    }
+
+    @Test
+    void emptyHistoryIs200WithAnEmptyList() throws Exception {
+        Res r = history(token);
+        assertEquals(200, r.status());
+        assertEquals("[]", r.body());
+    }
+
+    @Test
+    void historyRequiresAuthentication() throws Exception {
+        assertEquals(401, history(null).status());
+        assertEquals(401, history("A".repeat(43)).status());
+    }
+
+    @Test
+    void anotherStudentsAttemptsAreExcluded() throws Exception {
+        long mine = submitted(token, questionAId, correctA);
+        Object[] other = freshStudent();
+        long theirs = submitted((String) other[0], questionAId, wrongA);
+
+        Set<Long> myIds = new HashSet<>();
+        history(token).json().forEach(n -> myIds.add(n.get("id").asLong()));
+        assertEquals(Set.of(mine), myIds);
+
+        Set<Long> theirIds = new HashSet<>();
+        history((String) other[0]).json().forEach(n -> theirIds.add(n.get("id").asLong()));
+        assertEquals(Set.of(theirs), theirIds);
+    }
+
+    @Test
+    void studentIdQueryParameterIsIgnoredForHistory() throws Exception {
+        long mine = submitted(token, questionAId, correctA);
+        Object[] other = freshStudent();
+        Res r = call("GET", "/api/attempts?studentId=" + studentId, null, (String) other[0]);
+        assertEquals(200, r.status());
+        assertEquals("[]", r.body(), "the other student sees only their own (empty) history, not attempt " + mine);
+    }
+
+    @Test
+    void historyKeepsTheSubmissionSnapshotAfterTheQuizIsEdited() throws Exception {
+        submitted(token, questionAId, correctA, questionBId, correctB);
+        JsonNode before = history(token).json().get(0);
+
+        long topicId = call("POST", "/api/topics", JSON.createObjectNode()
+                .put("name", "Topic-" + UUID.randomUUID()).toString(), token).json().get("id").asLong();
+        createQuestion(topicId, "Added after the attempt", "x", true, "y", false);
+
+        JsonNode after = history(token).json().get(0);
+        assertEquals(before, after);
+        assertEquals(2, after.get("totalQuestions").asInt());
+        assertEquals(0, new java.math.BigDecimal("100.00").compareTo(after.get("scorePercent").decimalValue()));
+    }
+
+    @Test
+    void onlyGetIsAllowedForHistory() throws Exception {
+        for (String method : List.of("POST", "PUT", "DELETE")) {
+            assertEquals(405, call(method, "/api/attempts", method.equals("DELETE") ? null : "{}", token).status(),
+                    method);
+        }
+        assertEquals(404, call("GET", "/api/attemptsXYZ", null, token).status());
+    }
+
     @Test
     void onlyGetIsAllowedForResults() throws Exception {
         long id = submitted(token, questionAId, correctA);

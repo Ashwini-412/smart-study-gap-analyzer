@@ -157,6 +157,50 @@ class JdbcQuizAttemptRepositoryTest {
         assertTrue(attempts.findByStudentId(Long.MAX_VALUE).isEmpty());
     }
 
+    // ---- history summaries (Milestone 11) ----
+
+    @Test
+    void summariesCountOnlyAnsweredRowsAndReturnStoredValues() {
+        QuizAttemptRepository.Created created = attempts.createWithAnswers(studentId, quizId, 2, 1,
+                new BigDecimal("50.00"), List.of(answered(questionAId, correctOptionAId, true),
+                        new QuizAttemptRepository.NewAnswer(questionBId, null, false)));
+        createdAttemptId = created.attempt().id();
+
+        List<QuizAttemptRepository.AttemptSummary> summaries = attempts.findSummariesByStudentId(studentId);
+        assertEquals(1, summaries.size());
+        QuizAttemptRepository.AttemptSummary s = summaries.get(0);
+        assertEquals(createdAttemptId, s.attempt().id());
+        assertEquals(1, s.answeredCount(), "NULL selection is not counted");
+        assertEquals(2, s.attempt().totalQuestions());
+        assertEquals(1, s.attempt().correctCount());
+        assertEquals(0, new BigDecimal("50.00").compareTo(s.attempt().scorePercent()));
+        assertEquals(created.attempt().submittedAt(), s.attempt().submittedAt());
+    }
+
+    @Test
+    void summariesAreScopedToTheStudentAndNewestFirst() throws Exception {
+        QuizAttemptRepository.Created first = attempts.createWithAnswers(studentId, quizId, 1, 1,
+                new BigDecimal("100.00"), List.of(answered(questionAId, correctOptionAId, true)));
+        QuizAttemptRepository.Created second = attempts.createWithAnswers(studentId, quizId, 1, 0,
+                new BigDecimal("0.00"), List.of(answered(questionAId, wrongOptionAId, false)));
+        try {
+            List<Long> ids = attempts.findSummariesByStudentId(studentId).stream().map(s -> s.attempt().id()).toList();
+            // Same-second submissions tie on submitted_at; the id tie-breaker keeps the order stable.
+            assertEquals(List.of(second.attempt().id(), first.attempt().id()), ids);
+            assertTrue(attempts.findSummariesByStudentId(studentId).stream()
+                    .allMatch(s -> s.attempt().studentId() == studentId));
+            assertTrue(attempts.findSummariesByStudentId(Long.MAX_VALUE).isEmpty(), "other student: nothing");
+        } finally {
+            DbTestSupport.deleteAttemptById(db, first.attempt().id());
+            createdAttemptId = second.attempt().id();
+        }
+    }
+
+    @Test
+    void summariesForAStudentWithNoAttemptsIsEmpty() {
+        assertTrue(attempts.findSummariesByStudentId(studentId).isEmpty());
+    }
+
     // ---- foreign-key handling ----
 
     @Test

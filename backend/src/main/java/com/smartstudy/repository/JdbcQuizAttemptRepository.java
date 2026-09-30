@@ -28,6 +28,14 @@ public class JdbcQuizAttemptRepository implements QuizAttemptRepository {
     private static final String SELECT_BY_STUDENT =
             "SELECT id, student_id, quiz_id, total_questions, correct_count, score_percent, submitted_at "
                     + "FROM quiz_attempts WHERE student_id = ? ORDER BY submitted_at DESC, id DESC";
+    // LEFT JOIN so an attempt is listed even with no answer rows; COUNT(column) skips NULLs, so an
+    // unanswered question (selected_option_id NULL) is not counted. GROUP BY the primary key is
+    // valid under ONLY_FULL_GROUP_BY because the other quiz_attempts columns depend on it.
+    private static final String SELECT_SUMMARIES_BY_STUDENT =
+            "SELECT a.id, a.student_id, a.quiz_id, a.total_questions, a.correct_count, a.score_percent, "
+                    + "a.submitted_at, COUNT(aa.selected_option_id) AS answered_count "
+                    + "FROM quiz_attempts a LEFT JOIN attempt_answers aa ON aa.attempt_id = a.id "
+                    + "WHERE a.student_id = ? GROUP BY a.id ORDER BY a.submitted_at DESC, a.id DESC";
     private static final String SELECT_ANSWERS_BY_ATTEMPT =
             "SELECT id, attempt_id, question_id, selected_option_id, is_correct FROM attempt_answers "
                     + "WHERE attempt_id = ? ORDER BY id";
@@ -88,6 +96,23 @@ public class JdbcQuizAttemptRepository implements QuizAttemptRepository {
             }
         } catch (SQLException e) {
             throw new DataAccessException("Failed to query attempt answers", e);
+        }
+    }
+
+    @Override
+    public List<AttemptSummary> findSummariesByStudentId(long studentId) {
+        try (Connection c = database.getConnection();
+             PreparedStatement ps = c.prepareStatement(SELECT_SUMMARIES_BY_STUDENT)) {
+            ps.setLong(1, studentId);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<AttemptSummary> out = new ArrayList<>();
+                while (rs.next()) {
+                    out.add(new AttemptSummary(mapAttempt(rs), rs.getInt("answered_count")));
+                }
+                return out;
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to query quiz attempts", e);
         }
     }
 

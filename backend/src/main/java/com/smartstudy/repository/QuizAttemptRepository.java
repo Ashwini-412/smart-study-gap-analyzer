@@ -25,6 +25,13 @@ public interface QuizAttemptRepository {
     List<AttemptAnswer> findAnswersByAttemptId(long attemptId);
 
     /**
+     * A student's attempts with how many questions each actually answered (a stored answer row with
+     * a selected option), most recent first (submitted_at, then id). One query regardless of how
+     * many attempts there are. Every value is what was stored at submission time.
+     */
+    List<AttemptSummary> findSummariesByStudentId(long studentId);
+
+    /**
      * Creates the attempt and all of its answers as one atomic operation: either every row is
      * written, or none is. A foreign-key violation (unknown student/quiz/question, or an option
      * that does not belong to the question it answers) is reported as
@@ -40,5 +47,9 @@ public interface QuizAttemptRepository {
 
     /** The attempt and its answers exactly as persisted, including their generated ids. */
     record Created(QuizAttempt attempt, List<AttemptAnswer> answers) {
+    }
+
+    /** An attempt plus its count of answered (non-null selection) answer rows. */
+    record AttemptSummary(QuizAttempt attempt, int answeredCount) {
     }
 }

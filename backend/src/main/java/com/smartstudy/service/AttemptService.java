@@ -1,5 +1,6 @@
 package com.smartstudy.service;
 
+import com.smartstudy.dto.AttemptHistoryItem;
 import com.smartstudy.dto.AttemptResultResponse;
 import com.smartstudy.dto.AttemptSubmissionResponse;
 import com.smartstudy.model.AttemptAnswer;
@@ -138,6 +139,23 @@ public class AttemptService {
         return new AttemptResultResponse(attempt.id(), attempt.quizId(),
                 attempt.submittedAt() == null ? null : attempt.submittedAt().toString(),
                 attempt.totalQuestions(), answeredCount, attempt.correctCount(), attempt.scorePercent(), answers);
+    }
+
+    /**
+     * The student's attempt history, most recent first. Scoped to {@code studentId} in the query
+     * itself, so other students' attempts are never loaded. Every value is the snapshot stored at
+     * submission; nothing is re-scored against the quiz's current questions. Empty list if the
+     * student has no attempts.
+     */
+    public List<AttemptHistoryItem> history(long studentId) {
+        return attempts.findSummariesByStudentId(studentId).stream()
+                .map(s -> {
+                    QuizAttempt a = s.attempt();
+                    return new AttemptHistoryItem(a.id(), a.quizId(),
+                            a.submittedAt() == null ? null : a.submittedAt().toString(), a.totalQuestions(),
+                            s.answeredCount(), a.correctCount(), a.scorePercent());
+                })
+                .toList();
     }
 
     private QuizStructure loadAndValidate(long quizId, List<AnswerSubmission> answers) {

@@ -10,13 +10,15 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 
 /**
- * GET /api/attempts/{id}: the stored result of one of the caller's own attempts. Mounted on the
- * "/api/attempts/" prefix (HttpServer contexts cannot match a path parameter) behind AuthFilter;
- * the owner is taken from the session only, and ownership is enforced in AttemptService.
+ * GET /api/attempts: the caller's attempt history. GET /api/attempts/{id}: the stored result of one
+ * of the caller's own attempts, mounted on the "/api/attempts/" prefix (HttpServer contexts cannot
+ * match a path parameter). Both are behind AuthFilter; the student is taken from the session only,
+ * and ownership is enforced in AttemptService.
  */
 public class AttemptController {
 
-    private static final String PREFIX = "/api/attempts/";
+    private static final String PATH = "/api/attempts";
+    private static final String PREFIX = PATH + "/";
 
     private final AttemptService attempts;
     private final AuthService authService;
@@ -27,7 +29,12 @@ public class AttemptController {
     }
 
     public void mount(HttpServer server) {
+        server.createContext(PATH, new Endpoint(PATH, "GET", this::history)).getFilters().add(new AuthFilter(authService));
         server.createContext(PREFIX, (HttpHandler) this::handle).getFilters().add(new AuthFilter(authService));
+    }
+
+    private void history(HttpExchange exchange) throws IOException {
+        HttpUtil.sendJson(exchange, 200, attempts.history(AuthFilter.currentUser(exchange).studentId()));
     }
 
     private void handle(HttpExchange exchange) throws IOException {

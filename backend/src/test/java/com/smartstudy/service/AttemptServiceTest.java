@@ -289,6 +289,55 @@ class AttemptServiceTest {
         assertThrows(NotFoundException.class, () -> service.getResult(7L, 999_999L));
     }
 
+    // ---- history (Milestone 11) ----
+
+    @Test
+    void historyIsEmptyForAStudentWithNoAttempts() {
+        assertTrue(service.history(7L).isEmpty());
+    }
+
+    @Test
+    void historyListsOnlyTheStudentsOwnAttemptsNewestFirst() {
+        var first = service.submit(7L, quizId, List.of(new AnswerSubmission(questionAId, correctOptionAId)));
+        service.submit(8L, quizId, List.of(new AnswerSubmission(questionAId, correctOptionAId)));
+        var second = service.submit(7L, quizId, List.of(new AnswerSubmission(questionAId, wrongOptionAId)));
+
+        var h = service.history(7L);
+        assertEquals(List.of(second.id(), first.id()), h.stream().map(i -> i.id()).toList());
+        assertEquals(1, service.history(8L).size());
+    }
+
+    @Test
+    void historyReturnsStoredValuesExactly() {
+        var created = attempts.createWithAnswers(7L, quizId, 2, 1, new java.math.BigDecimal("42.00"), List.of(
+                new com.smartstudy.repository.QuizAttemptRepository.NewAnswer(questionAId, correctOptionAId, true),
+                new com.smartstudy.repository.QuizAttemptRepository.NewAnswer(questionBId, null, false)));
+
+        var item = service.history(7L).get(0);
+        assertEquals(created.attempt().id(), item.id());
+        assertEquals(quizId, item.quizId());
+        assertEquals(2, item.totalQuestions());
+        assertEquals(1, item.answeredCount(), "the null selection is not counted as answered");
+        assertEquals(1, item.correctCount());
+        assertEquals(0, new java.math.BigDecimal("42.00").compareTo(item.scorePercent()), "not re-scored");
+        assertEquals(created.attempt().submittedAt().toString(), item.submittedAt());
+    }
+
+    @Test
+    void historyIsUnaffectedByLaterQuizEdits() {
+        service.submit(7L, quizId, List.of(new AnswerSubmission(questionAId, correctOptionAId),
+                new AnswerSubmission(questionBId, correctOptionBId)));
+        var before = service.history(7L).get(0);
+
+        questionService.create(quizId, new CreateQuestionRequest(topicId, "Added later",
+                List.of(new OptionInput("x", true), new OptionInput("y", false))));
+
+        var after = service.history(7L).get(0);
+        assertEquals(before, after, "stored snapshot: totals and score do not follow the edited quiz");
+        assertEquals(2, after.totalQuestions());
+        assertEquals(0, new java.math.BigDecimal("100.00").compareTo(after.scorePercent()));
+    }
+
     private long qbWrongOption() {
         return questions.optionsByQuestionIds(List.of(questionBId)).get(questionBId).stream()
                 .filter(o -> !o.correct()).findFirst().orElseThrow().id();

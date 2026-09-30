@@ -47,6 +47,14 @@ public class InMemoryQuizAttemptRepository implements QuizAttemptRepository {
     }
 
     @Override
+    public List<AttemptSummary> findSummariesByStudentId(long studentId) {
+        return findByStudentId(studentId).stream()
+                .map(a -> new AttemptSummary(a, (int) findAnswersByAttemptId(a.id()).stream()
+                        .filter(ans -> ans.selectedOptionId() != null).count()))
+                .toList();
+    }
+
+    @Override
     public synchronized Created createWithAnswers(long studentId, long quizId, int totalQuestions, int correctCount,
                                                   BigDecimal scorePercent, List<NewAnswer> answers) {
         long attemptId = attemptIds.incrementAndGet();
