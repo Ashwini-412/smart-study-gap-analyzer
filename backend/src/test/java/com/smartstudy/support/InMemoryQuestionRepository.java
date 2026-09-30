@@ -71,6 +71,11 @@ public class InMemoryQuestionRepository implements QuestionRepository {
         this.failOptionInsert = toThrow;
     }
 
+    /** The topic a question belongs to (as questions.topic_id), for fakes that join through questions. */
+    public long topicIdOf(long questionId) {
+        return questionsById.get(questionId).topicId();
+    }
+
     public int questionCount() {
         return questionsById.size();
     }

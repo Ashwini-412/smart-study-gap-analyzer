@@ -200,7 +200,7 @@ All paths under `/api`, JSON bodies. "Auth" = requires bearer token.
 | GET | `/api/attempts` | yes | Current student's attempt history → 200 `[{id, quizId, submittedAt, totalQuestions, answeredCount, correctCount, scorePercent}]`, newest first (`submitted_at DESC, id DESC`), `[]` when none. Values are the snapshot stored at submission; one query (implemented in Milestone 11) |
 | GET | `/api/attempts/{id}` | yes | One of the caller's own attempts → 200 `{id, quizId, submittedAt, totalQuestions, answeredCount, correctCount, scorePercent, answers: [{questionId, selectedOptionId, correct}]}`, read from the evaluation stored at submission (no correct option ids). Another student's attempt → 404, same as unknown (implemented in Milestone 10) |
 | GET | `/api/performance/topics` | yes | Topic-wise accuracy |
-| GET | `/api/performance/gaps` | yes | Topics with classification |
+| GET | `/api/performance/gaps` | yes | Every topic with the caller's cumulative accuracy and classification → 200 `[{topicId, topicName, totalQuestions, correctCount, accuracyPercent, classification}]`, ordered by topic name. `totalQuestions` counts each of the topic's questions in every attempt, unanswered included; `accuracyPercent` is null and `classification` is `No Data` when that is 0. Thresholds from `gap.threshold.*` (section 7); one query over stored `is_correct` values (implemented in Milestone 12) |
 | GET | `/api/dashboard` | yes | Aggregate: overall score, recent attempts, topics, gaps |
 | GET | `/api/health` | no | Liveness check |
 

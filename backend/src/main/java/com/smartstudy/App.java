@@ -4,9 +4,11 @@ import com.smartstudy.config.AppConfig;
 import com.smartstudy.controller.AttemptController;
 import com.smartstudy.controller.AuthController;
 import com.smartstudy.controller.HealthController;
+import com.smartstudy.controller.PerformanceController;
 import com.smartstudy.controller.QuizController;
 import com.smartstudy.controller.TopicController;
 import com.smartstudy.repository.Database;
+import com.smartstudy.repository.JdbcPerformanceRepository;
 import com.smartstudy.repository.JdbcQuestionRepository;
 import com.smartstudy.repository.JdbcQuizAttemptRepository;
 import com.smartstudy.repository.JdbcQuizRepository;
@@ -18,6 +20,7 @@ import com.smartstudy.repository.QuizRepository;
 import com.smartstudy.repository.TopicRepository;
 import com.smartstudy.service.AttemptService;
 import com.smartstudy.service.AuthService;
+import com.smartstudy.service.PerformanceService;
 import com.smartstudy.service.QuestionService;
 import com.smartstudy.service.QuizService;
 import com.smartstudy.service.TopicService;
@@ -57,8 +60,11 @@ public class App {
         AttemptService attemptService =
                 new AttemptService(quizRepository, questionRepository, new JdbcQuizAttemptRepository(database));
 
+        PerformanceService performanceService = new PerformanceService(new JdbcPerformanceRepository(database),
+                config.strongThreshold(), config.moderateThreshold());
+
         HttpServer server = createServer(config.serverHost(), config.serverPort(), authService,
-                topicService, quizService, questionService, attemptService);
+                topicService, quizService, questionService, attemptService, performanceService);
         server.start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.stop(1)));
         System.out.println("Smart Study Gap Analyzer listening on http://" + config.serverHost() + ":"
@@ -88,6 +94,17 @@ public class App {
         new TopicController(topicService, authService).mount(server);
         new QuizController(quizService, questionService, attemptService, authService).mount(server);
         new AttemptController(attemptService, authService).mount(server);
+        return server;
+    }
+
+    /** Everything above plus performance analysis (topic study gaps). */
+    public static HttpServer createServer(String host, int port, AuthService authService, TopicService topicService,
+                                           QuizService quizService, QuestionService questionService,
+                                           AttemptService attemptService, PerformanceService performanceService)
+            throws IOException {
+        HttpServer server = createServer(host, port, authService, topicService, quizService, questionService,
+                attemptService);
+        new PerformanceController(performanceService, authService).mount(server);
         return server;
     }
 }
